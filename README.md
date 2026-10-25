@@ -106,16 +106,18 @@ job-helper-extension/
 ├─ demo.html             # 模拟招聘申请表演示页
 ├─ demo.js               # 演示页逻辑，复用同一套填充引擎
 ├─ tests/                # 本地单测（Node 直接运行，无需浏览器）
-│  ├─ popup-version.test.js  # 简历版本管理 13 条断言
-│  └─ ledger.test.js         # 投递记录去重 / CSV / 页面探测 20 条断言
+│  ├─ popup-version.test.js     # 简历版本管理 13 条断言
+│  ├─ ledger.test.js            # 投递记录去重 / CSV / 页面探测 20 条断言
+│  └─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载链 4 条断言
 └─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
 ```
 
 运行测试：
 
 ```bash
-node tests/popup-version.test.js   # 13/13 通过
-node tests/ledger.test.js          # 20/20 通过
+node tests/popup-version.test.js     # 13/13 通过
+node tests/ledger.test.js            # 20/20 通过
+node tests/integration-smoke.test.js # 4/4 通过
 ```
 
 ## 技术要点

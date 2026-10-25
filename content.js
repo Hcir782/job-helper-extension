@@ -576,8 +576,15 @@ function mountFloatingButton() {
   btn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    chrome.runtime.sendMessage({ type: "OPEN_PANEL" }, () => {
-      void chrome.runtime.lastError; // 后台未就绪时忽略，避免控制台报错
+    chrome.runtime.sendMessage({ type: "OPEN_PANEL" }, (resp) => {
+      // 后台无响应或失败时降级：直接打开扩展页面（用户点击手势内，不会被拦截）
+      if (chrome.runtime.lastError || !resp || !resp.ok) {
+        try {
+          window.open(chrome.runtime.getURL("popup.html"), "_blank");
+        } catch (err) {
+          console.error("[求职简历助手] 打开面板失败：", err);
+        }
+      }
     });
   });
 

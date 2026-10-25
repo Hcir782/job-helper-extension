@@ -73,7 +73,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.5.0";
+    el.textContent = "v0.6.1";
   }
 }
 
