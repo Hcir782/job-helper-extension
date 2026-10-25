@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>求职简历助手</title>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <h1>求职简历助手</h1>
+      <span class="version" id="version">v0.1.0</span>
+    </header>
+
+    <section class="status-card" id="status-card">
+      <div class="status-row">
+        <span class="label">本地存储</span>
+        <span class="value" id="storage-status">检测中…</span>
+      </div>
+      <div class="status-row">
+        <span class="label">简历档案</span>
+        <span class="value" id="resume-status">暂无简历</span>
+      </div>
+    </section>
+
+    <footer class="panel-footer">
+      <p class="tip">阶段 1 骨架：简历表单将在下一阶段加入。</p>
+    </footer>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
