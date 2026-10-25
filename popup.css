@@ -191,6 +191,42 @@ body {
   line-height: 1.2;
 }
 
+/* ========== 可折叠字段分组（<details>） ========== */
+.group {
+  margin: 6px 0;
+}
+
+.group > summary.divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  padding: 3px 0 3px 8px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.group > summary.divider::-webkit-details-marker {
+  display: none;
+}
+
+.group > summary.divider::after {
+  content: "▸";
+  margin-right: 2px;
+  font-size: 10px;
+  color: #95a5a6;
+  transition: transform 0.15s ease;
+}
+
+.group[open] > summary.divider::after {
+  transform: rotate(90deg);
+}
+
+.group > summary.divider:hover {
+  color: #2471a3;
+}
+
 /* ========== 投递记录 ========== */
 .ledger {
   margin-bottom: 10px;

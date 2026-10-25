@@ -48,19 +48,23 @@ function makeElement(tag) {
 
 const elements = {};
 
+/* 字段集合以 field-dictionary.js 的 JH_FIELD_GROUPS 为唯一来源 */
+const dictSrc = fs.readFileSync(
+  path.join(__dirname, "..", "field-dictionary.js"),
+  "utf8"
+);
+const { JH_FIELD_GROUPS } = new Function(
+  "window",
+  dictSrc + "\nreturn { JH_FIELD_GROUPS };"
+)({});
+const ALL_FIELDS = JH_FIELD_GROUPS.flatMap((g) => g.fields);
+
 function getEl(id) {
   if (!elements[id]) {
     const el = makeElement(id === "resume-select" ? "select" : "div");
     if (id === "resume-form") {
       el.elements = {};
-      // RESUME_FIELDS 的控件
-      [
-        "name", "gender", "phone", "birth", "email",
-        "education", "graduationYear", "school", "major",
-        "workYears", "expectSalary", "currentCompany", "currentPosition",
-        "expectPosition", "expectCity",
-        "selfIntro", "projectExp",
-      ].forEach((f) => {
+      ALL_FIELDS.forEach((f) => {
         el.elements[f] = { value: "" };
       });
     }
@@ -130,18 +134,29 @@ const api = new Function(
   "confirm",
   "prompt",
   "console",
+  "JH_FIELD_GROUPS",
   src +
     "\nreturn { loadResume, saveResume, createResume, duplicateResume, deleteResume," +
     " switchResume, renderResumeList, readForm, writeForm, isDirty, state, genResumeId };"
-)(windowMock, documentMock, chromeMock, confirmMock, promptMock, console);
+)(windowMock, documentMock, chromeMock, confirmMock, promptMock, console, JH_FIELD_GROUPS);
 
 const SAMPLE_A = {
-  name: "王瑞瑶", gender: "男", phone: "15248522685", birth: "2004-08",
-  email: "hcir012@qq.com", education: "本科", graduationYear: "2027",
-  school: "大连科技学院", major: "网络工程", workYears: "应届生",
-  expectSalary: "6-8K", currentCompany: "", currentPosition: "",
-  expectPosition: "系统运维工程师", expectCity: "大连",
-  selfIntro: "熟悉 Linux、K8s。", projectExp: "企业网络设计与实现。",
+  name: "王瑞瑶", gender: "男", birth: "2004-08", phone: "15248522685",
+  email: "hcir012@qq.com", idType: "身份证", idCard: "210200200408001234",
+  nationality: "中国", nation: "汉族", politics: "共青团员",
+  address: "辽宁省大连市", emergencyContact: "王父", emergencyPhone: "13800138000",
+  education: "本科", graduationYear: "2027-06", school: "大连科技学院",
+  college: "信息科学与技术学院", major: "网络工程", studyMode: "全日制",
+  eduDetail: "2023.09-2027.06 大连科技学院 网络工程 本科",
+  workYears: "应届生", expectPosition: "系统运维工程师", expectCity: "大连",
+  expectSalary: "6-8K", acceptRelocate: "是", availableIntern: "是",
+  referrerCode: "ABC123",
+  internshipExp: "运维实习生，负责服务器巡检", projectExp: "企业网络设计与实现",
+  campusExp: "学习委员", awards: "省级二等奖",
+  certificates: "RHCSA、RHCE、CET-4", languageLevel: "CET-4",
+  skills: "Linux、Kubernetes、Ansible", papers: "", portfolio: "",
+  currentCompany: "", currentPosition: "",
+  selfIntro: "熟悉 Linux、K8s。", hobbies: "徒步、看电影",
 };
 const SAMPLE_B = {
   ...SAMPLE_A,

@@ -16,14 +16,31 @@
  *   }
  */
 
-/** 简历字段名，与 popup.html 中表单控件的 name 属性一一对应 */
-const RESUME_FIELDS = [
-  "name", "gender", "phone", "birth", "email",
-  "education", "graduationYear", "school", "major",
-  "workYears", "expectSalary", "currentCompany", "currentPosition",
-  "expectPosition", "expectCity",
-  "selfIntro", "projectExp",
-];
+/**
+ * 简历字段名（40 个），数据源为 field-dictionary.js 的 JH_FIELD_GROUPS，
+ * 保证「面板表单 / 别名词典 / 预设 JSON」三处字段集合始终一致。
+ * 词典未加载时用下面的兜底列表（顺序与分组一致）。
+ */
+const RESUME_FIELDS =
+  typeof JH_FIELD_GROUPS !== "undefined" && JH_FIELD_GROUPS.length
+    ? JH_FIELD_GROUPS.flatMap((g) => g.fields)
+    : [
+        // 基本信息
+        "name", "gender", "birth", "phone", "email",
+        "idType", "idCard", "nationality", "nation", "politics",
+        "address", "emergencyContact", "emergencyPhone",
+        // 教育背景
+        "education", "graduationYear", "school", "college", "major",
+        "studyMode", "gpaRank", "isOverseas", "eduDetail", "highSchool",
+        // 求职意向
+        "expectPosition", "expectCity", "expectSalary", "workYears",
+        "acceptRelocate", "availableIntern", "sourceChannel", "referrerCode",
+        // 经历与能力
+        "internshipExp", "projectExp", "campusExp", "awards",
+        "certificates", "languageLevel", "portfolio", "skills", "papers",
+        // 工作与补充
+        "currentCompany", "currentPosition", "selfIntro", "hobbies",
+      ];
 
 const DEFAULT_RESUME_ID = "default";
 const DEFAULT_RESUME_NAME = "通用版";
@@ -73,7 +90,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.7.0";
+    el.textContent = "v0.8.0";
   }
 }
 

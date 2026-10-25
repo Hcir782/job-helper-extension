@@ -19,6 +19,14 @@ const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
 
+/* 字段集合以 field-dictionary.js 的 JH_FIELD_GROUPS 为唯一来源 */
+const DICT_SRC = fs.readFileSync(path.join(ROOT, "field-dictionary.js"), "utf8");
+const { JH_FIELD_GROUPS } = new Function(
+  "window",
+  DICT_SRC + "\nreturn { JH_FIELD_GROUPS };"
+)({});
+const ALL_FIELDS = JH_FIELD_GROUPS.flatMap((g) => g.fields);
+
 /* ========== mock chrome（SW 侧） ========== */
 
 function createSWChrome() {
@@ -129,13 +137,7 @@ function createPopupEnv() {
         const el = makeElement(id === "resume-select" ? "select" : "div");
         if (id === "resume-form") {
           el.elements = {};
-          [
-            "name", "gender", "phone", "birth", "email",
-            "education", "graduationYear", "school", "major",
-            "workYears", "expectSalary", "currentCompany", "currentPosition",
-            "expectPosition", "expectCity",
-            "selfIntro", "projectExp",
-          ].forEach((f) => { el.elements[f] = { value: "" }; });
+          ALL_FIELDS.forEach((f) => { el.elements[f] = { value: "" }; });
         }
         elements[id] = el;
       }
@@ -209,7 +211,7 @@ function buildPopupContext(env) {
     }),
   };
   const context = vm.createContext(sandbox);
-  for (const f of ["site-adapters.js", "lib/ledger.js", "popup.js"]) {
+  for (const f of ["field-dictionary.js", "site-adapters.js", "lib/ledger.js", "popup.js"]) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), context);
   }
   return context;
@@ -339,13 +341,18 @@ async function test(name, fn) {
     // 档案补全字段
     assert.strictEqual(preset.data.school, "大连科技学院");
     assert.strictEqual(preset.data.major, "网络工程");
-    assert.strictEqual(preset.data.graduationYear, "2027");
+    assert.strictEqual(preset.data.graduationYear, "2027-06");
     assert.strictEqual(preset.data.education, "本科");
     assert.strictEqual(preset.data.expectPosition, "系统运维工程师");
+    assert.strictEqual(preset.data.gpaRank, "专业排名前 20%；绩点 3.14");
+    assert.strictEqual(preset.data.isOverseas, "否");
+    assert.ok(preset.data.skills.includes("Kubernetes"), "技能应包含 K8s");
+    assert.ok(preset.data.certificates.includes("RHCE"), "证书应包含 RHCE");
     // 不确定的字段应保持为空，不能瞎填
     assert.strictEqual(preset.data.gender, "", "性别应为空");
-    assert.strictEqual(preset.data.birth, "", "出生年月应为空");
+    assert.strictEqual(preset.data.birth, "", "出生日期应为空");
     assert.strictEqual(preset.data.projectExp, "", "项目经历应为空");
+    assert.strictEqual(preset.data.idCard, "", "证件号码应为空");
 
     // 表单已回填、激活版本已切换
     assert.strictEqual(env.elements["resume-form"].elements.name.value, "王瑞瑶");
@@ -353,7 +360,33 @@ async function test(name, fn) {
     assert.strictEqual(resumes.length, 2, "原有默认版本应保留，不被覆盖");
   });
 
-  console.log(`\n结果：${passed}/5 通过`);
+  await test("表单字段与词典字段完全一致（数量与顺序）", async () => {
+    const html = fs.readFileSync(path.join(ROOT, "popup.html"), "utf8");
+    const names = [...html.matchAll(/<(?:input|select|textarea)[^>]*name="([^"]+)"/g)]
+      .map((m) => m[1]);
+
+    assert.strictEqual(ALL_FIELDS.length, 44, `词典应为 44 个字段，实际 ${ALL_FIELDS.length}`);
+    assert.strictEqual(names.length, 44, `popup.html 应为 44 个控件，实际 ${names.length}`);
+    assert.deepStrictEqual(names, ALL_FIELDS, "popup.html 字段顺序应与词典分组一致");
+  });
+
+  await test("词典无重复字段、每个字段都有别名", async () => {
+    const seen = new Set();
+    ALL_FIELDS.forEach((f) => {
+      assert.ok(!seen.has(f), `字段重复：${f}`);
+      seen.add(f);
+    });
+    const ctx = new Function(
+      "window",
+      DICT_SRC + "\nreturn JH_FIELD_KEYWORDS;"
+    )({});
+    ALL_FIELDS.forEach((f) => {
+      const aliases = ctx[f];
+      assert.ok(Array.isArray(aliases) && aliases.length > 0, `${f} 缺少别名表`);
+    });
+  });
+
+  console.log(`\n结果：${passed}/7 通过`);
   if (process.exitCode) {
     console.error("存在失败用例");
     process.exit(1);

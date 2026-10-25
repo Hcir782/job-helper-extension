@@ -9,7 +9,7 @@
   <main class="panel">
     <header class="panel-header">
       <h1>求职简历助手</h1>
-      <span class="version" id="version">v0.7.0</span>
+      <span class="version" id="version">v0.8.0</span>
     </header>
 
     <div class="fatal-box" id="fatal-box"></div>
@@ -23,123 +23,312 @@
     </div>
 
     <form id="resume-form" class="form" autocomplete="off">
-      <!-- ========== 基本信息 ========== -->
-      <div class="row">
+      <!-- ========== 基本信息（13） ========== -->
+      <details class="group" open>
+        <summary class="divider">基本信息</summary>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">姓名</span>
+            <input type="text" name="name" placeholder="王瑞瑶" />
+          </label>
+          <label class="field">
+            <span class="field-label">性别</span>
+            <select name="gender">
+              <option value="">请选择</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">出生日期</span>
+            <input type="text" name="birth" placeholder="2004-08" />
+          </label>
+          <label class="field">
+            <span class="field-label">手机号</span>
+            <input type="tel" name="phone" placeholder="15248522685" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">邮箱</span>
+            <input type="email" name="email" placeholder="hcir012@qq.com" />
+          </label>
+          <label class="field">
+            <span class="field-label">证件类型</span>
+            <select name="idType">
+              <option value="">请选择</option>
+              <option value="身份证">身份证</option>
+              <option value="护照">护照</option>
+              <option value="港澳通行证">港澳通行证</option>
+              <option value="台湾通行证">台湾通行证</option>
+            </select>
+          </label>
+        </div>
+
         <label class="field">
-          <span class="field-label">姓名</span>
-          <input type="text" name="name" placeholder="王小明" />
+          <span class="field-label">证件号码</span>
+          <input type="text" name="idCard" placeholder="身份证号（仅本地保存）" />
         </label>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">国籍</span>
+            <input type="text" name="nationality" placeholder="中国" />
+          </label>
+          <label class="field">
+            <span class="field-label">民族</span>
+            <input type="text" name="nation" placeholder="汉族" />
+          </label>
+        </div>
+
         <label class="field">
-          <span class="field-label">性别</span>
-          <select name="gender">
+          <span class="field-label">政治面貌</span>
+          <select name="politics">
             <option value="">请选择</option>
-            <option value="男">男</option>
-            <option value="女">女</option>
+            <option value="群众">群众</option>
+            <option value="共青团员">共青团员</option>
+            <option value="中共预备党员">中共预备党员</option>
+            <option value="中共党员">中共党员</option>
+            <option value="民主党派">民主党派</option>
+            <option value="其他">其他</option>
           </select>
         </label>
-      </div>
 
-      <div class="row">
         <label class="field">
-          <span class="field-label">手机号</span>
-          <input type="tel" name="phone" placeholder="13800138000" />
+          <span class="field-label">现居住地 / 通讯地址</span>
+          <input type="text" name="address" placeholder="辽宁省大连市" />
         </label>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">紧急联系人</span>
+            <input type="text" name="emergencyContact" placeholder="王某某" />
+          </label>
+          <label class="field">
+            <span class="field-label">紧急联系人电话</span>
+            <input type="tel" name="emergencyPhone" placeholder="13800138000" />
+          </label>
+        </div>
+      </details>
+
+      <!-- ========== 教育背景（7） ========== -->
+      <details class="group" open>
+        <summary class="divider">教育背景</summary>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">最高学历</span>
+            <select name="education">
+              <option value="">请选择</option>
+              <option value="大专">大专</option>
+              <option value="本科">本科</option>
+              <option value="硕士">硕士</option>
+              <option value="博士">博士</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">毕业时间</span>
+            <input type="text" name="graduationYear" placeholder="2027-06" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">学校名称</span>
+            <input type="text" name="school" placeholder="大连科技学院" />
+          </label>
+          <label class="field">
+            <span class="field-label">学院名称</span>
+            <input type="text" name="college" placeholder="信息科学与技术学院" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">专业</span>
+            <input type="text" name="major" placeholder="网络工程" />
+          </label>
+          <label class="field">
+            <span class="field-label">学习形式</span>
+            <select name="studyMode">
+              <option value="">请选择</option>
+              <option value="全日制">全日制</option>
+              <option value="非全日制">非全日制</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">成绩排名 / 绩点</span>
+            <input type="text" name="gpaRank" placeholder="专业前 20%；绩点 3.14" />
+          </label>
+          <label class="field">
+            <span class="field-label">是否境外留学</span>
+            <select name="isOverseas">
+              <option value="">请选择</option>
+              <option value="否">否</option>
+              <option value="是">是</option>
+            </select>
+          </label>
+        </div>
+
         <label class="field">
-          <span class="field-label">出生年月</span>
-          <input type="text" name="birth" placeholder="2003-05" />
+          <span class="field-label">教育经历明细（起止时间 / 主修课程等）</span>
+          <textarea name="eduDetail" rows="3" placeholder="2023.09-2027.06 大连科技学院 网络工程 本科（全日制）&#10;专业排名前 20%；主修计算机网络、Linux 系统管理、K8s 容器编排"></textarea>
         </label>
-      </div>
 
-      <label class="field">
-        <span class="field-label">邮箱</span>
-        <input type="email" name="email" placeholder="example@qq.com" />
-      </label>
-
-      <!-- ========== 教育背景 ========== -->
-      <div class="divider">教育背景</div>
-
-      <div class="row">
         <label class="field">
-          <span class="field-label">最高学历</span>
-          <select name="education">
-            <option value="">请选择</option>
-            <option value="大专">大专</option>
-            <option value="本科">本科</option>
-            <option value="硕士">硕士</option>
-            <option value="博士">博士</option>
-          </select>
+          <span class="field-label">高中经历（学校 / 起止时间）</span>
+          <input type="text" name="highSchool" placeholder="2019.09-2023.06 某某市第一中学" />
         </label>
+      </details>
+
+      <!-- ========== 求职意向（7） ========== -->
+      <details class="group">
+        <summary class="divider">求职意向</summary>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">期望职位</span>
+            <input type="text" name="expectPosition" placeholder="系统运维工程师" />
+          </label>
+          <label class="field">
+            <span class="field-label">意向城市</span>
+            <input type="text" name="expectCity" placeholder="大连 / 上海" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">期望薪资</span>
+            <input type="text" name="expectSalary" placeholder="6-8K" />
+          </label>
+          <label class="field">
+            <span class="field-label">工作年限</span>
+            <select name="workYears">
+              <option value="">请选择</option>
+              <option value="应届生">应届生</option>
+              <option value="1年以内">1年以内</option>
+              <option value="1-3年">1-3年</option>
+              <option value="3-5年">3-5年</option>
+              <option value="5年以上">5年以上</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">是否接受城市调剂</span>
+            <select name="acceptRelocate">
+              <option value="">请选择</option>
+              <option value="是">是</option>
+              <option value="否">否</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">是否可实习</span>
+            <select name="availableIntern">
+              <option value="">请选择</option>
+              <option value="是">是</option>
+              <option value="否">否</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">了解渠道</span>
+            <input type="text" name="sourceChannel" placeholder="校园宣讲会 / 官网 / 内推" />
+          </label>
+          <label class="field">
+            <span class="field-label">推荐码 / 内推码</span>
+            <input type="text" name="referrerCode" placeholder="有则填写，无则留空" />
+          </label>
+        </div>
+      </details>
+
+      <!-- ========== 经历与能力（9） ========== -->
+      <details class="group">
+        <summary class="divider">经历与能力</summary>
+
         <label class="field">
-          <span class="field-label">毕业年份</span>
-          <input type="text" name="graduationYear" placeholder="2027" />
+          <span class="field-label">实习经历（公司 / 职位 / 时间 / 职责与产出）</span>
+          <textarea name="internshipExp" rows="3" placeholder="2026.07-2026.10 星途云智科技有限公司 运维实习生&#10;负责 30+ 台 CentOS 服务器巡检与 Ansible 批量部署；把手工发布改造成 Jenkins + Shell 脚本，发布耗时从 40 分钟降到 8 分钟。"></textarea>
         </label>
-      </div>
 
-      <label class="field">
-        <span class="field-label">毕业院校</span>
-        <input type="text" name="school" placeholder="大连科技学院" />
-      </label>
-
-      <label class="field">
-        <span class="field-label">专业</span>
-        <input type="text" name="major" placeholder="网络工程" />
-      </label>
-
-      <!-- ========== 求职意向 ========== -->
-      <div class="divider">求职意向</div>
-
-      <div class="row">
         <label class="field">
-          <span class="field-label">工作年限</span>
-          <select name="workYears">
-            <option value="">请选择</option>
-            <option value="应届生">应届生</option>
-            <option value="1年以内">1年以内</option>
-            <option value="1-3年">1-3年</option>
-            <option value="3-5年">3-5年</option>
-            <option value="5年以上">5年以上</option>
-          </select>
+          <span class="field-label">项目经历</span>
+          <textarea name="projectExp" rows="3" placeholder="企业网络设计与实现：OSPF 多区域 + Calico BGP 无封装&#10;使用 K8s + Calico 搭建跨节点 Pod 网络，验证 BGP 对等与故障切换。"></textarea>
         </label>
-        <label class="field">
-          <span class="field-label">期望薪资</span>
-          <input type="text" name="expectSalary" placeholder="6-8K" />
-        </label>
-      </div>
 
-      <div class="row">
         <label class="field">
-          <span class="field-label">当前公司</span>
-          <input type="text" name="currentCompany" placeholder="星途云智科技有限公司" />
+          <span class="field-label">在校职务</span>
+          <textarea name="campusExp" rows="2" placeholder="2024.09-2025.06 网络工程 2 班 学习委员"></textarea>
         </label>
+
         <label class="field">
-          <span class="field-label">当前职位</span>
-          <input type="text" name="currentPosition" placeholder="运维实习生" />
+          <span class="field-label">获奖 / 竞赛</span>
+          <textarea name="awards" rows="2" placeholder="2025.10 全国大学生网络技术大赛 省级二等奖"></textarea>
         </label>
-      </div>
 
-      <div class="row">
         <label class="field">
-          <span class="field-label">期望职位</span>
-          <input type="text" name="expectPosition" placeholder="系统运维工程师" />
+          <span class="field-label">证书 / 资格</span>
+          <textarea name="certificates" rows="2" placeholder="红帽 RHCSA、RHCE；CET-4"></textarea>
         </label>
+
+        <div class="row">
+          <label class="field">
+            <span class="field-label">语言能力</span>
+            <input type="text" name="languageLevel" placeholder="CET-4（520 分）" />
+          </label>
+          <label class="field">
+            <span class="field-label">作品链接</span>
+            <input type="text" name="portfolio" placeholder="GitHub / 博客地址" />
+          </label>
+        </div>
+
         <label class="field">
-          <span class="field-label">期望城市</span>
-          <input type="text" name="expectCity" placeholder="大连" />
+          <span class="field-label">技能</span>
+          <textarea name="skills" rows="2" placeholder="Linux、Shell、Kubernetes、Ansible、Python、Podman、计算机网络，了解 Golang"></textarea>
         </label>
-      </div>
 
-      <!-- ========== 补充信息 ========== -->
-      <div class="divider">补充信息</div>
+        <label class="field">
+          <span class="field-label">论文 / 学术成果</span>
+          <textarea name="papers" rows="2" placeholder="有则填写论文名称与链接，无则留空"></textarea>
+        </label>
+      </details>
 
-      <label class="field">
-        <span class="field-label">自我评价</span>
-        <textarea name="selfIntro" rows="3" placeholder="熟悉 Linux、K8s 集群部署与 Ansible 自动化运维……"></textarea>
-      </label>
+      <!-- ========== 工作与补充（4） ========== -->
+      <details class="group">
+        <summary class="divider">工作与补充</summary>
 
-      <label class="field">
-        <span class="field-label">项目经历</span>
-        <textarea name="projectExp" rows="3" placeholder="企业网络设计与实现：OSPF 多区域 + Calico BGP 无封装……"></textarea>
-      </label>
+        <div class="row">
+          <label class="field">
+            <span class="field-label">当前公司</span>
+            <input type="text" name="currentCompany" placeholder="星途云智科技有限公司" />
+          </label>
+          <label class="field">
+            <span class="field-label">当前职位</span>
+            <input type="text" name="currentPosition" placeholder="运维实习生" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">自我评价</span>
+          <textarea name="selfIntro" rows="3" placeholder="熟悉 Linux 系统与 Shell 脚本，掌握 K8s 集群部署与 Ansible 自动化运维……"></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">兴趣爱好 / 特长</span>
+          <input type="text" name="hobbies" placeholder="徒步、看电影、听音乐" />
+        </label>
+      </details>
     </form>
 
     <footer class="panel-footer">
@@ -177,6 +366,7 @@
     </footer>
   </main>
 
+  <script src="field-dictionary.js"></script>
   <script src="site-adapters.js"></script>
   <script src="lib/ledger.js"></script>
   <script src="popup.js"></script>

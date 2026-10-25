@@ -1,32 +1,63 @@
 {
   "name": "王瑞瑶-运维版",
-  "note": "从华勤技术校招申请页（IT运维工程师 2027届）提取 + 个人档案补全。不确定的字段留空，导入后可在面板里补充。",
-  "source": "华勤技术 / IT运维工程师（2027届）/ 上海市 / 发布于 2026-09-19",
+  "note": "字段集合 = Moka（华勤）与快手校招申请表字段并集去重。只填已确认的信息，民族/性别/证件号/实习项目等未提供的字段一律留空，导入后请补全。",
+  "source": "华勤技术（app.mokahr.com）+ 快手校招（campus.kuaishou.cn）申请表字段并集",
   "exportedAt": "2026-10-25",
   "data": {
     "name": "王瑞瑶",
     "gender": "",
-    "phone": "15248522685",
     "birth": "",
+    "phone": "15248522685",
     "email": "hcir012@qq.com",
+    "idType": "",
+    "idCard": "",
+    "nationality": "中国",
+    "nation": "",
+    "politics": "",
+    "address": "",
+    "emergencyContact": "",
+    "emergencyPhone": "",
+
     "education": "本科",
-    "graduationYear": "2027",
+    "graduationYear": "2027-06",
     "school": "大连科技学院",
+    "college": "",
     "major": "网络工程",
+    "studyMode": "全日制",
+    "gpaRank": "专业排名前 20%；绩点 3.14",
+    "isOverseas": "否",
+    "eduDetail": "2023.09-2027.06 大连科技学院 网络工程 本科（全日制）",
+    "highSchool": "",
+
     "workYears": "应届生",
-    "expectSalary": "",
-    "currentCompany": "",
-    "currentPosition": "",
     "expectPosition": "系统运维工程师",
     "expectCity": "大连",
-    "selfIntro": "网络工程专业本科在读（2027 届），熟悉 Linux 系统与 Shell 脚本，掌握 Kubernetes 集群部署、Ansible 自动化运维，熟悉 Podman 容器与计算机网络，了解 Golang。持有红帽 RHCSA、RHCE 认证及 CET-4。",
-    "projectExp": ""
+    "expectSalary": "",
+    "acceptRelocate": "",
+    "availableIntern": "",
+    "sourceChannel": "",
+    "referrerCode": "",
+
+    "internshipExp": "",
+    "projectExp": "",
+    "campusExp": "",
+    "awards": "",
+    "certificates": "红帽 RHCSA、RHCE；CET-4",
+    "languageLevel": "CET-4",
+    "skills": "Linux、Shell 脚本、Kubernetes、Ansible、Python、Podman、计算机网络；了解 Golang",
+    "papers": "",
+    "portfolio": "",
+
+    "currentCompany": "",
+    "currentPosition": "",
+    "selfIntro": "网络工程专业本科在读（2027 届），熟悉 Linux 系统与 Shell 脚本，掌握 Kubernetes 集群部署与 Ansible 自动化运维，熟悉 Podman 容器与计算机网络基础，了解 Golang。已取得红帽 RHCSA、RHCE 认证，具备 CET-4 英语能力。做事细致、执行力强，希望在系统运维方向持续深耕。",
+    "hobbies": "徒步、看电影、听音乐"
   },
   "application": {
     "company": "华勤技术",
     "position": "IT运维工程师（2027届）",
     "city": "上海市",
     "publishedAt": "2026-09-19",
-    "url": ""
+    "url": "https://app.mokahr.com/campus-recruitment/hq/44757#/job/4ab0b821-7102-41e4-ade0-00848515269a/apply"
   }
 }
