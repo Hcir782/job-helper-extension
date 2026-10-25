@@ -17,6 +17,7 @@
 | 多简历版本管理（新建 / 切换 / 复制 / 删除） | ✅ 已完成（v0.5.0） |
 | 投递记录台账（公司 / 岗位 / 时间 / 简历版本） | ✅ 已完成（v0.6.0） |
 | 投递记录导出 CSV（Excel 可直接打开） | ✅ 已完成（v0.6.0） |
+| 内置预设简历一键载入（换设备/答辩演示快速就绪） | ✅ 已完成（v0.7.0） |
 
 ## 支持的招聘网站
 
@@ -90,6 +91,16 @@
 - **自动去重**：同公司 + 同岗位 + 同一天只记一条，反复刷新页面不会刷屏。
 - 面板底部「投递记录」区展示最近 50 条，点 **导出 CSV** 可下载完整台账（带 BOM，Excel 直接打开中文不乱码），点 **清空** 可全部删除。
 
+### 载入预设简历
+
+面板底部点击 **载入预设简历**，会把 `presets/resume-wangruiyao.json` 里预置的完整简历导入为一个**新版本**（不覆盖已有数据），并自动切换到该版本。
+
+用途：
+- 换电脑、换浏览器后快速恢复一份可用数据，不用从零手动填写
+- 答辩/演示时一键准备完整数据，避免现场打字
+
+预设文件是普通 JSON，可以按同样格式放自己的版本，文件名需要在 `popup.js` 的 `loadPresetResume()` 里对应修改。空字段会保持为空，不会瞎填。
+
 ## 目录结构
 
 ```
@@ -100,15 +111,17 @@ job-helper-extension/
 ├─ site-adapters.js      # 站点 / 组件库适配器注册表 + 招聘站点域名表 + 页面公司/岗位探测
 ├─ content.js            # 注入网页：字段识别、表单填充、注入徽标、悬浮入口、页面诊断、投递登记
 ├─ popup.html            # 面板（同时注册为"扩展程序选项"，可在独立标签页中整页编辑）
-├─ popup.js              # 面板交互：简历版本管理、简历读写、一键填充、投递记录、CSV 导出
+├─ popup.js              # 面板交互：简历版本管理、简历读写、一键填充、投递记录、CSV 导出、预设载入
 ├─ popup.css             # 面板与表单样式
 ├─ lib/ledger.js         # 投递记录台账核心逻辑（去重 / CSV / 格式化），三端共享的纯函数库
+├─ presets/
+│  └─ resume-wangruiyao.json  # 内置预设简历（17 字段 + 来源信息）
 ├─ demo.html             # 模拟招聘申请表演示页
 ├─ demo.js               # 演示页逻辑，复用同一套填充引擎
 ├─ tests/                # 本地单测（Node 直接运行，无需浏览器）
 │  ├─ popup-version.test.js     # 简历版本管理 13 条断言
 │  ├─ ledger.test.js            # 投递记录去重 / CSV / 页面探测 20 条断言
-│  └─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载链 4 条断言
+│  └─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载 + 预设导入 5 条断言
 └─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
 ```
 
@@ -117,7 +130,7 @@ job-helper-extension/
 ```bash
 node tests/popup-version.test.js     # 13/13 通过
 node tests/ledger.test.js            # 20/20 通过
-node tests/integration-smoke.test.js # 4/4 通过
+node tests/integration-smoke.test.js # 5/5 通过
 ```
 
 ## 技术要点

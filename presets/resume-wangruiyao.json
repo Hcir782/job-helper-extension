@@ -1,0 +1,32 @@
+{
+  "name": "王瑞瑶-运维版",
+  "note": "从华勤技术校招申请页（IT运维工程师 2027届）提取 + 个人档案补全。不确定的字段留空，导入后可在面板里补充。",
+  "source": "华勤技术 / IT运维工程师（2027届）/ 上海市 / 发布于 2026-09-19",
+  "exportedAt": "2026-10-25",
+  "data": {
+    "name": "王瑞瑶",
+    "gender": "",
+    "phone": "15248522685",
+    "birth": "",
+    "email": "hcir012@qq.com",
+    "education": "本科",
+    "graduationYear": "2027",
+    "school": "大连科技学院",
+    "major": "网络工程",
+    "workYears": "应届生",
+    "expectSalary": "",
+    "currentCompany": "",
+    "currentPosition": "",
+    "expectPosition": "系统运维工程师",
+    "expectCity": "大连",
+    "selfIntro": "网络工程专业本科在读（2027 届），熟悉 Linux 系统与 Shell 脚本，掌握 Kubernetes 集群部署、Ansible 自动化运维，熟悉 Podman 容器与计算机网络，了解 Golang。持有红帽 RHCSA、RHCE 认证及 CET-4。",
+    "projectExp": ""
+  },
+  "application": {
+    "company": "华勤技术",
+    "position": "IT运维工程师（2027届）",
+    "city": "上海市",
+    "publishedAt": "2026-09-19",
+    "url": ""
+  }
+}

@@ -155,7 +155,8 @@ function createPopupEnv() {
 
   const chrome = {
     runtime: {
-      getManifest: () => ({ version: "0.6.0" }),
+      getManifest: () => ({ version: "0.7.0" }),
+      getURL: (p) => `chrome-extension://abcdefgh/${p}`,
       sendMessage: (msg, cb) => {
         // 模拟 SW 的响应
         setTimeout(() => cb({ ok: true, list: [] }), 0);
@@ -178,6 +179,40 @@ function createPopupEnv() {
 
   const popupStore = {};
   return { document, window, chrome, elements, popupStore };
+}
+
+/* ========== 构建 popup 运行时（三脚本 + 环境） ========== */
+
+/** 在 vm 沙箱里按 popup.html 的顺序加载脚本，返回 context */
+function buildPopupContext(env) {
+  const sandbox = {
+    window: env.window,
+    document: env.document,
+    chrome: env.chrome,
+    console,
+    setTimeout,
+    location: { hostname: "" },
+    confirm: () => true,
+    prompt: () => "测试版",
+    Blob: class {},
+    URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
+    // 预设文件从仓库里真实读取，验证 JSON 与字段映射
+    fetch: async () => ({
+      ok: true,
+      json: async () =>
+        JSON.parse(
+          fs.readFileSync(
+            path.join(ROOT, "presets", "resume-wangruiyao.json"),
+            "utf8"
+          )
+        ),
+    }),
+  };
+  const context = vm.createContext(sandbox);
+  for (const f of ["site-adapters.js", "lib/ledger.js", "popup.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), context);
+  }
+  return context;
 }
 
 let passed = 0;
@@ -251,23 +286,7 @@ async function test(name, fn) {
   /* ---------- 链路 B：popup.html 三脚本 ---------- */
   await test("链路B：popup.html 三脚本按序加载 + DOMContentLoaded 无异常", async () => {
     const env = createPopupEnv();
-    const sandbox = {
-      window: env.window,
-      document: env.document,
-      chrome: env.chrome,
-      console,
-      setTimeout,
-      location: { hostname: "" },
-      confirm: () => true,
-      prompt: () => "测试版",
-      Blob: class {},
-      URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
-    };
-    const context = vm.createContext(sandbox);
-
-    for (const f of ["site-adapters.js", "lib/ledger.js", "popup.js"]) {
-      vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), context);
-    }
+    buildPopupContext(env);
 
     // 触发 DOMContentLoaded（popup.js 里注册的初始化入口）
     assert.ok(env.document._dom && env.document._dom.DOMContentLoaded, "应注册 DOMContentLoaded");
@@ -278,28 +297,19 @@ async function test(name, fn) {
     assert.ok(env.popupStore.resumes && env.popupStore.resumes.default, "应创建默认版本");
     const sel = env.elements["resume-select"];
     assert.ok(sel && sel.children.length >= 1, "版本下拉框应有选项");
-    assert.ok(env.elements["version"].textContent.includes("0.6.0"), "版本号应显示");
+    assert.ok(env.elements["version"].textContent.includes("0.7.0"), "版本号应显示");
     const ledger = env.elements["ledger-list"];
     assert.ok(ledger && ledger.innerHTML.length > 0, "投递记录区应被渲染");
   });
 
-  await test("链路B：面板里打开演示页/诊断等按钮均已绑定", async () => {
+  await test("链路B：面板里所有按钮均已绑定事件", async () => {
     const env = createPopupEnv();
-    const sandbox = {
-      window: env.window, document: env.document, chrome: env.chrome,
-      console, setTimeout, location: { hostname: "" },
-      confirm: () => true, prompt: () => "x",
-      Blob: class {}, URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
-    };
-    const context = vm.createContext(sandbox);
-    for (const f of ["site-adapters.js", "lib/ledger.js", "popup.js"]) {
-      vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), context);
-    }
+    buildPopupContext(env);
     await env.document._dom.DOMContentLoaded();
 
     ["btn-save", "btn-fill", "btn-demo", "btn-diag", "opt-float",
      "resume-select", "btn-new-resume", "btn-dup-resume", "btn-del-resume",
-     "btn-export-csv", "btn-clear-ledger"].forEach((id) => {
+     "btn-export-csv", "btn-clear-ledger", "btn-preset"].forEach((id) => {
       const el = env.elements[id];
       assert.ok(el, `${id} 应存在`);
       assert.ok(
@@ -309,7 +319,41 @@ async function test(name, fn) {
     });
   });
 
-  console.log(`\n结果：${passed}/4 通过`);
+  await test("链路B：载入预设简历 → 新建版本并回填表单", async () => {
+    const env = createPopupEnv();
+    const context = buildPopupContext(env);
+    await env.document._dom.DOMContentLoaded();
+
+    // 直接调用面板里的载入预设逻辑
+    await vm.runInContext("loadPresetResume()", context);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const resumes = Object.values(env.popupStore.resumes);
+    const preset = resumes.find((r) => r.name === "王瑞瑶-运维版");
+    assert.ok(preset, "应生成「王瑞瑶-运维版」新版本");
+
+    // 页面提取到的三项必须原样保留
+    assert.strictEqual(preset.data.name, "王瑞瑶");
+    assert.strictEqual(preset.data.phone, "15248522685");
+    assert.strictEqual(preset.data.email, "hcir012@qq.com");
+    // 档案补全字段
+    assert.strictEqual(preset.data.school, "大连科技学院");
+    assert.strictEqual(preset.data.major, "网络工程");
+    assert.strictEqual(preset.data.graduationYear, "2027");
+    assert.strictEqual(preset.data.education, "本科");
+    assert.strictEqual(preset.data.expectPosition, "系统运维工程师");
+    // 不确定的字段应保持为空，不能瞎填
+    assert.strictEqual(preset.data.gender, "", "性别应为空");
+    assert.strictEqual(preset.data.birth, "", "出生年月应为空");
+    assert.strictEqual(preset.data.projectExp, "", "项目经历应为空");
+
+    // 表单已回填、激活版本已切换
+    assert.strictEqual(env.elements["resume-form"].elements.name.value, "王瑞瑶");
+    assert.strictEqual(env.popupStore.activeResumeId, preset.id);
+    assert.strictEqual(resumes.length, 2, "原有默认版本应保留，不被覆盖");
+  });
+
+  console.log(`\n结果：${passed}/5 通过`);
   if (process.exitCode) {
     console.error("存在失败用例");
     process.exit(1);

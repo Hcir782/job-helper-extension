@@ -73,7 +73,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.6.1";
+    el.textContent = "v0.7.0";
   }
 }
 
@@ -93,6 +93,51 @@ function bindEvents() {
   // 投递记录
   document.getElementById("btn-export-csv")?.addEventListener("click", exportLedger);
   document.getElementById("btn-clear-ledger")?.addEventListener("click", clearLedger);
+
+  // 预设简历
+  document.getElementById("btn-preset")?.addEventListener("click", loadPresetResume);
+}
+
+/**
+ * 载入扩展内置的预设简历（presets/resume-*.json），一键导入为新版本。
+ * 用途：换电脑/换浏览器、或演示答辩时快速准备一份完整数据。
+ * 只取 RESUME_FIELDS 里的字段，文件里多余的信息不会写进表单。
+ */
+async function loadPresetResume() {
+  setTip("正在载入预设简历…");
+
+  try {
+    const url = chrome.runtime.getURL("presets/resume-wangruiyao.json");
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("预设文件不存在");
+    const preset = await resp.json();
+
+    const data = {};
+    RESUME_FIELDS.forEach((f) => {
+      const v = preset.data && preset.data[f];
+      // 空字段也写 ""，保持与 readForm() 相同的 17 字段结构
+      data[f] = v ? String(v).trim() : "";
+    });
+
+    if (!countFilled(data)) throw new Error("预设里没有可识别的简历字段");
+
+    // 导入为新版本，不覆盖已有数据
+    const id = genResumeId();
+    const name = preset.name || "导入版";
+    const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
+    resumes[id] = { id, name, data, updatedAt: Date.now() };
+    await chrome.storage.local.set({ resumes, activeResumeId: id });
+
+    renderResumeList();
+    await loadResume();
+    setTip(
+      `已载入预设「${name}」（${countFilled(data)} 项字段），检查无误后点「保存简历」。`,
+      "ok"
+    );
+  } catch (e) {
+    console.error("[求职简历助手] 载入预设失败：", e);
+    setTip("载入预设失败：" + e.message, "error");
+  }
 }
 
 /** 保存"是否在网页上显示悬浮按钮"，content.js 通过 storage.onChanged 实时响应 */
