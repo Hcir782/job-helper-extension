@@ -11,12 +11,11 @@
  * 再手动派发 input / change 事件，React 的合成事件才会感知到变化。
  */
 
-// 开发期注入提示徽标：页面右上角短暂显示，用于无 DevTools 环境下确认注入成功
-// 正式发布前改为 false 即可关闭
-const SHOW_INJECT_BADGE = true;
+// 开发期注入提示徽标：全量部署后默认关闭（每个页面都弹一下会很吵），需要调试时改回 true
+const SHOW_INJECT_BADGE = false;
 
-// 页面右下角的常驻入口按钮：点一下就能打开完整操作面板
-const SHOW_FLOATING_BUTTON = true;
+// 悬浮入口按钮的开关存在 chrome.storage.local.showFloatingButton，默认开启、可在面板里关掉
+const FLOAT_BUTTON_KEY = "showFloatingButton";
 
 /**
  * 字段匹配规则来自 field-dictionary.js（别名词典），站点结构识别来自 site-adapters.js。
@@ -474,9 +473,9 @@ function highlight(el) {
 /**
  * 在页面右下角挂一个圆形按钮，点击通过后台打开完整操作面板。
  * 内容脚本无法直接打开扩展页面，必须经 background 调 chrome.tabs.create。
+ * 显示/隐藏由面板里的开关（chrome.storage.local.showFloatingButton）控制。
  */
 function mountFloatingButton() {
-  if (!SHOW_FLOATING_BUTTON) return;
   if (!document.body) return;
   if (document.getElementById("__job_helper_btn__")) return; // 防止重复注入
 
@@ -500,7 +499,7 @@ function mountFloatingButton() {
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
     cursor: pointer !important;
     z-index: 2147483646 !important;
-    display: flex !important;
+    display: none !important;
     align-items: center !important;
     justify-content: center !important;
     opacity: 0.9 !important;
@@ -525,6 +524,31 @@ function mountFloatingButton() {
   });
 
   document.body.appendChild(btn);
+  applyFloatVisibility(btn);
+
+  // 面板里切换开关时，已打开的页面立即生效
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[FLOAT_BUTTON_KEY]) {
+      applyFloatVisibility(btn, changes[FLOAT_BUTTON_KEY].newValue);
+    }
+  });
+}
+
+/** 根据存储里的开关决定按钮显隐；默认显示（未设置时视为开启） */
+function applyFloatVisibility(btn, value) {
+  const resolve = (v) => {
+    if (v !== undefined) return !!v;
+    return chrome.storage.local.get(FLOAT_BUTTON_KEY).then((r) => {
+      const enabled = r[FLOAT_BUTTON_KEY] !== false;
+      btn.style.setProperty("display", enabled ? "flex" : "none", "important");
+    });
+  };
+
+  if (value !== undefined) {
+    btn.style.setProperty("display", value ? "flex" : "none", "important");
+    return;
+  }
+  resolve(undefined);
 }
 
 /* ==================== 注入提示徽标 ==================== */

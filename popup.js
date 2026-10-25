@@ -49,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initVersion();
     bindEvents();
     loadResume();
+    loadFloatOption();
   } catch (e) {
     showFatal(e.message);
   }
@@ -62,7 +63,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.3.0";
+    el.textContent = "v0.4.0";
   }
 }
 
@@ -71,6 +72,18 @@ function bindEvents() {
   document.getElementById("btn-fill")?.addEventListener("click", fillCurrentPage);
   document.getElementById("btn-demo")?.addEventListener("click", openDemoPage);
   document.getElementById("btn-diag")?.addEventListener("click", runDiagnose);
+  document.getElementById("opt-float")?.addEventListener("change", saveFloatOption);
+}
+
+/** 保存"是否在网页上显示悬浮按钮"，content.js 通过 storage.onChanged 实时响应 */
+async function saveFloatOption() {
+  const box = document.getElementById("opt-float");
+  if (!box) return;
+  try {
+    await chrome.storage.local.set({ showFloatingButton: box.checked });
+  } catch (e) {
+    console.error("[求职简历助手] 保存悬浮按钮开关失败：", e);
+  }
 }
 
 /** 扫描当前招聘页面，把候选控件信息显示在面板里（没有 DevTools 时的排查手段） */
@@ -370,6 +383,18 @@ function writeForm(data) {
 
 function countFilled(data) {
   return RESUME_FIELDS.filter((f) => data[f]).length;
+}
+
+/** 读取悬浮按钮开关并回填复选框（默认开启） */
+async function loadFloatOption() {
+  const box = document.getElementById("opt-float");
+  if (!box) return;
+  try {
+    const result = await chrome.storage.local.get(["showFloatingButton"]);
+    box.checked = result.showFloatingButton !== false;
+  } catch (e) {
+    box.checked = true;
+  }
 }
 
 function setTip(text, level) {
