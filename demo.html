@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>模拟招聘网站 · 求职简历助手演示</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: #f0f4f8;
+      color: #22303c;
+      padding: 32px 16px 64px;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .banner {
+      background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px;
+      padding: 10px 14px; font-size: 13px; color: #8a6100; margin-bottom: 18px; line-height: 1.6;
+    }
+    .card {
+      background: #fff; border: 1px solid #e3e9f0; border-radius: 12px;
+      padding: 26px 28px; box-shadow: 0 2px 12px rgba(20, 40, 70, 0.05);
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: #8496a6; margin-bottom: 22px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+    .field { display: flex; flex-direction: column; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: 13px; color: #5d6f80; margin-bottom: 6px; }
+    input, select, textarea {
+      padding: 9px 11px; font-size: 14px; font-family: inherit; color: #22303c;
+      background: #fff; border: 1px solid #dbe3ec; border-radius: 7px; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #2f9cf4; box-shadow: 0 0 0 3px rgba(47, 156, 244, .13);
+    }
+    textarea { resize: vertical; min-height: 84px; line-height: 1.6; }
+    .radios { display: flex; gap: 18px; padding-top: 4px; }
+    .radios label { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 14px; color: #22303c; }
+    .actions { margin-top: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    button {
+      padding: 10px 22px; font-size: 14px; font-family: inherit; font-weight: 600;
+      color: #fff; background: #2f9cf4; border: none; border-radius: 7px; cursor: pointer;
+    }
+    button:hover { background: #2389dd; }
+    .ghost { background: #fff; color: #2f9cf4; border: 1px solid #2f9cf4; }
+    .ghost:hover { background: #eef7ff; }
+    .msg { font-size: 13px; color: #27ae60; }
+    .msg.error { color: #d64541; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      这是插件自带的<b>演示页</b>，模拟一个标准招聘网站申请表，用于验证「一键填充」是否正常。<br />
+      它不依赖任何真实网站、不受网站改版影响，答辩演示时也可以直接用它。
+    </div>
+
+    <div class="card">
+      <h1>在线简历填写</h1>
+      <p class="sub">请填写以下基本信息完成投递</p>
+
+      <div class="grid">
+        <div class="field">
+          <label for="d-name">姓名</label>
+          <input id="d-name" type="text" placeholder="请输入姓名" />
+        </div>
+        <div class="field">
+          <label>性别</label>
+          <div class="radios">
+            <label><input type="radio" name="gender" value="男" /> 男</label>
+            <label><input type="radio" name="gender" value="女" /> 女</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="d-phone">手机号</label>
+          <input id="d-phone" type="tel" placeholder="请输入手机号" />
+        </div>
+        <div class="field">
+          <label for="d-email">邮箱</label>
+          <input id="d-email" type="email" placeholder="请输入邮箱" />
+        </div>
+
+        <div class="field">
+          <label for="d-edu">最高学历</label>
+          <select id="d-edu">
+            <option value="">请选择最高学历</option>
+            <option value="大专">大专</option>
+            <option value="本科">本科</option>
+            <option value="硕士">硕士</option>
+            <option value="博士">博士</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="d-year">毕业年份</label>
+          <input id="d-year" type="text" placeholder="请输入毕业年份" />
+        </div>
+
+        <div class="field">
+          <label for="d-school">毕业院校</label>
+          <input id="d-school" type="text" placeholder="请输入毕业院校" />
+        </div>
+        <div class="field">
+          <label for="d-major">专业</label>
+          <input id="d-major" type="text" placeholder="请输入所学专业" />
+        </div>
+
+        <div class="field">
+          <label for="d-pos">期望职位</label>
+          <input id="d-pos" type="text" placeholder="请输入期望职位" />
+        </div>
+        <div class="field">
+          <label for="d-city">期望城市</label>
+          <input id="d-city" type="text" placeholder="请输入期望城市" />
+        </div>
+
+        <div class="field full">
+          <label for="d-intro">自我评价</label>
+          <textarea id="d-intro" placeholder="请输入自我评价"></textarea>
+        </div>
+        <div class="field full">
+          <label for="d-project">项目经历</label>
+          <textarea id="d-project" placeholder="请输入项目经历"></textarea>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-demo-fill" type="button">用已保存的简历填充</button>
+        <button id="btn-demo-clear" class="ghost" type="button">清空表单</button>
+        <span class="msg" id="demo-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 直接复用 content.js 里的填充引擎，保证演示和真实注入用的是同一套代码 -->
+  <script src="content.js"></script>
+  <script src="demo.js"></script>
+</body>
+</html>

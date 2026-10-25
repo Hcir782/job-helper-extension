@@ -9,22 +9,143 @@
   <main class="panel">
     <header class="panel-header">
       <h1>求职简历助手</h1>
-      <span class="version" id="version">v0.1.0</span>
+      <span class="version" id="version">v0.2.0</span>
     </header>
 
-    <section class="status-card" id="status-card">
-      <div class="status-row">
-        <span class="label">本地存储</span>
-        <span class="value" id="storage-status">检测中…</span>
+    <div class="fatal-box" id="fatal-box"></div>
+
+    <form id="resume-form" class="form" autocomplete="off">
+      <!-- ========== 基本信息 ========== -->
+      <div class="row">
+        <label class="field">
+          <span class="field-label">姓名</span>
+          <input type="text" name="name" placeholder="王小明" />
+        </label>
+        <label class="field">
+          <span class="field-label">性别</span>
+          <select name="gender">
+            <option value="">请选择</option>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </label>
       </div>
-      <div class="status-row">
-        <span class="label">简历档案</span>
-        <span class="value" id="resume-status">暂无简历</span>
+
+      <div class="row">
+        <label class="field">
+          <span class="field-label">手机号</span>
+          <input type="tel" name="phone" placeholder="13800138000" />
+        </label>
+        <label class="field">
+          <span class="field-label">出生年月</span>
+          <input type="text" name="birth" placeholder="2003-05" />
+        </label>
       </div>
-    </section>
+
+      <label class="field">
+        <span class="field-label">邮箱</span>
+        <input type="email" name="email" placeholder="example@qq.com" />
+      </label>
+
+      <!-- ========== 教育背景 ========== -->
+      <div class="divider">教育背景</div>
+
+      <div class="row">
+        <label class="field">
+          <span class="field-label">最高学历</span>
+          <select name="education">
+            <option value="">请选择</option>
+            <option value="大专">大专</option>
+            <option value="本科">本科</option>
+            <option value="硕士">硕士</option>
+            <option value="博士">博士</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">毕业年份</span>
+          <input type="text" name="graduationYear" placeholder="2027" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">毕业院校</span>
+        <input type="text" name="school" placeholder="大连科技学院" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">专业</span>
+        <input type="text" name="major" placeholder="网络工程" />
+      </label>
+
+      <!-- ========== 求职意向 ========== -->
+      <div class="divider">求职意向</div>
+
+      <div class="row">
+        <label class="field">
+          <span class="field-label">工作年限</span>
+          <select name="workYears">
+            <option value="">请选择</option>
+            <option value="应届生">应届生</option>
+            <option value="1年以内">1年以内</option>
+            <option value="1-3年">1-3年</option>
+            <option value="3-5年">3-5年</option>
+            <option value="5年以上">5年以上</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">期望薪资</span>
+          <input type="text" name="expectSalary" placeholder="6-8K" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="field">
+          <span class="field-label">当前公司</span>
+          <input type="text" name="currentCompany" placeholder="星途云智科技有限公司" />
+        </label>
+        <label class="field">
+          <span class="field-label">当前职位</span>
+          <input type="text" name="currentPosition" placeholder="运维实习生" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="field">
+          <span class="field-label">期望职位</span>
+          <input type="text" name="expectPosition" placeholder="系统运维工程师" />
+        </label>
+        <label class="field">
+          <span class="field-label">期望城市</span>
+          <input type="text" name="expectCity" placeholder="大连" />
+        </label>
+      </div>
+
+      <!-- ========== 补充信息 ========== -->
+      <div class="divider">补充信息</div>
+
+      <label class="field">
+        <span class="field-label">自我评价</span>
+        <textarea name="selfIntro" rows="3" placeholder="熟悉 Linux、K8s 集群部署与 Ansible 自动化运维……"></textarea>
+      </label>
+
+      <label class="field">
+        <span class="field-label">项目经历</span>
+        <textarea name="projectExp" rows="3" placeholder="企业网络设计与实现：OSPF 多区域 + Calico BGP 无封装……"></textarea>
+      </label>
+    </form>
 
     <footer class="panel-footer">
-      <p class="tip">阶段 1 骨架：简历表单将在下一阶段加入。</p>
+      <div class="btn-group">
+        <button id="btn-save" class="btn btn-primary" type="button">保存简历</button>
+        <button id="btn-fill" class="btn btn-ghost" type="button">一键填充</button>
+      </div>
+      <p class="tip" id="tip">数据仅保存在本浏览器本地，不会上传云端。</p>
+      <p class="link-row">
+        <button id="btn-demo" class="link-btn" type="button">打开演示页</button>
+        <span class="dot">·</span>
+        <button id="btn-diag" class="link-btn" type="button">诊断当前页面</button>
+      </p>
+      <div class="diag-box" id="diag-box"></div>
     </footer>
   </main>
 

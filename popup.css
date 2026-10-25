@@ -6,7 +6,7 @@
 }
 
 body {
-  width: 320px;
+  width: 380px;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
   background: #f5f7fa;
   color: #2c3e50;
@@ -14,18 +14,22 @@ body {
 
 /* ========== 面板 ========== */
 .panel {
-  padding: 16px;
+  padding: 14px 16px 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 560px;
 }
 
 .panel-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .panel-header h1 {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -34,50 +38,217 @@ body {
   color: #95a5a6;
 }
 
-/* ========== 状态卡片 ========== */
-.status-card {
-  background: #ffffff;
-  border: 1px solid #e4e9f0;
-  border-radius: 8px;
-  padding: 12px;
+/* ========== 错误提示条 ========== */
+.fatal-box {
+  display: none;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a12f22;
+  background: #fdecea;
+  border: 1px solid #f5c2bd;
+  border-radius: 6px;
+  word-break: break-all;
 }
 
-.status-row {
+/* ========== 表单 ========== */
+.form {
+  overflow-y: auto;
+  padding-right: 4px;
+  flex: 1;
+}
+
+/* 滚动条瘦身 */
+.form::-webkit-scrollbar {
+  width: 6px;
+}
+
+.form::-webkit-scrollbar-thumb {
+  background: #d5dbe3;
+  border-radius: 3px;
+}
+
+.row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
+  gap: 8px;
 }
 
-.status-row + .status-row {
-  border-top: 1px dashed #eef1f5;
+.row .field {
+  flex: 1;
+  min-width: 0;
 }
 
-.label {
-  font-size: 13px;
+.field {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
   color: #7f8c9b;
+  margin-bottom: 3px;
 }
 
-.value {
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 6px 8px;
   font-size: 13px;
-  font-weight: 600;
+  font-family: inherit;
+  color: #2c3e50;
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.value.ok {
-  color: #27ae60;
+.field textarea {
+  resize: vertical;
+  line-height: 1.5;
 }
 
-.value.warn {
-  color: #e67e22;
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.15);
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: #c2cbd6;
+}
+
+/* 分组标题 */
+.divider {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a5b6c;
+  margin: 10px 0 8px;
+  padding-left: 8px;
+  border-left: 3px solid #3498db;
+  line-height: 1.2;
 }
 
 /* ========== 底部 ========== */
 .panel-footer {
-  margin-top: 12px;
+  flex-shrink: 0;
+  padding: 10px 0 12px;
+  background: #f5f7fa;
+  border-top: 1px solid #e8edf3;
+  margin-top: 8px;
+}
+
+.btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  flex: 1;
+  padding: 9px 0;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn-primary {
+  background: #3498db;
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: #2f89c5;
+}
+
+.btn-ghost {
+  background: #ffffff;
+  color: #3498db;
+  border-color: #3498db;
+}
+
+.btn-ghost:hover {
+  background: #eef6fc;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .tip {
   font-size: 12px;
   color: #95a5a6;
   line-height: 1.5;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.tip.ok {
+  color: #27ae60;
+}
+
+.tip.error {
+  color: #e74c3c;
+}
+
+/* 底部文字按钮（打开演示页等辅助入口） */
+.link-row {
+  text-align: center;
+  margin-top: 4px;
+}
+
+.link-btn {
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #3498db;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: #2471a3;
+}
+
+.dot {
+  color: #c2cbd6;
+  font-size: 12px;
+}
+
+/* 页面结构诊断输出 */
+.diag-box {
+  display: none;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.55;
+  font-family: Consolas, "Courier New", monospace;
+  color: #33475b;
+  background: #ffffff;
+  border: 1px solid #e4e9f0;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diag-box::-webkit-scrollbar {
+  width: 6px;
+}
+
+.diag-box::-webkit-scrollbar-thumb {
+  background: #d5dbe3;
+  border-radius: 3px;
 }
