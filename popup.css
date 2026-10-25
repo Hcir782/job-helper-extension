@@ -38,6 +38,63 @@ body {
   color: #95a5a6;
 }
 
+/* ========== 简历版本工具栏 ========== */
+.version-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.version-select {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #2c3e50;
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.version-select:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.15);
+}
+
+.mini-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1;
+  color: #3498db;
+  background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mini-btn:hover {
+  background: #eef6fc;
+  border-color: #3498db;
+}
+
+.mini-btn.danger {
+  color: #c0392b;
+}
+
+.mini-btn.danger:hover {
+  background: #fdecea;
+  border-color: #e74c3c;
+}
+
 /* ========== 错误提示条 ========== */
 .fatal-box {
   display: none;

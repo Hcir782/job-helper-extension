@@ -1,16 +1,18 @@
 /**
- * popup.js —— 弹窗交互逻辑（阶段 2：简历存储 + 一键填充）
+ * popup.js —— 弹窗交互逻辑（阶段 3：简历版本管理 + 投递记录）
  *
  * 职责：
- * 1. 读取本地简历数据回填到表单
- * 2. 保存表单内容到 chrome.storage.local
- * 3. 向当前标签页的 content script 下发填充指令
+ * 1. 多简历版本的增删改切换（新建 / 复制 / 删除 / 切换）
+ * 2. 读取本地简历数据回填到表单
+ * 3. 保存表单内容到 chrome.storage.local
+ * 4. 向当前标签页的 content script 下发填充指令
  *
- * 存储结构（阶段 3 的版本管理会在此之上扩展）：
+ * 存储结构：
  *   chrome.storage.local = {
- *     resumes: { [id]: { id, name, data, updatedAt } },
- *     activeResumeId: string,
- *     applications: [ { company, position, resumeId, sentAt } ]
+ *     resumes: { [id]: { id, name, data, updatedAt } },  // 多简历
+ *     activeResumeId: string,                            // 当前选中版本
+ *     showFloatingButton: boolean,
+ *     applications: [ { company, position, resumeId, sentAt } ]  // 阶段 3 投递记录
  *   }
  */
 
@@ -25,6 +27,12 @@ const RESUME_FIELDS = [
 
 const DEFAULT_RESUME_ID = "default";
 const DEFAULT_RESUME_NAME = "通用版";
+
+/** 当前会话状态：选中版本 id + 已载入的数据快照（用于切换前判断有无未保存修改） */
+const state = {
+  resumeId: DEFAULT_RESUME_ID,
+  loadedData: {},
+};
 
 /* ========== 兜底：把脚本异常显示在弹窗里 ========== */
 
@@ -48,6 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     initVersion();
     bindEvents();
+    renderResumeList();
     loadResume();
     loadFloatOption();
   } catch (e) {
@@ -63,7 +72,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.4.0";
+    el.textContent = "v0.5.0";
   }
 }
 
@@ -73,6 +82,12 @@ function bindEvents() {
   document.getElementById("btn-demo")?.addEventListener("click", openDemoPage);
   document.getElementById("btn-diag")?.addEventListener("click", runDiagnose);
   document.getElementById("opt-float")?.addEventListener("change", saveFloatOption);
+
+  // 简历版本工具栏
+  document.getElementById("resume-select")?.addEventListener("change", switchResume);
+  document.getElementById("btn-new-resume")?.addEventListener("click", createResume);
+  document.getElementById("btn-dup-resume")?.addEventListener("click", duplicateResume);
+  document.getElementById("btn-del-resume")?.addEventListener("click", deleteResume);
 }
 
 /** 保存"是否在网页上显示悬浮按钮"，content.js 通过 storage.onChanged 实时响应 */
@@ -109,7 +124,8 @@ async function runDiagnose() {
       return;
     }
 
-    box.textContent = formatDiagnose(resp);  } catch (e) {
+    box.textContent = formatDiagnose(resp);
+  } catch (e) {
     box.textContent = "诊断失败：" + e.message;
   }
 }
@@ -134,32 +150,238 @@ function openDemoPage() {
   chrome.tabs.create({ url: chrome.runtime.getURL("demo.html") });
 }
 
+/* ========== 简历版本管理 ========== */
+
+/**
+ * 渲染版本下拉框。
+ * 选项按更新时间倒序（最近编辑的排前面），并同步选中当前激活版本。
+ */
+async function renderResumeList() {
+  const select = document.getElementById("resume-select");
+  if (!select) return;
+
+  const { resumes = {}, activeResumeId } = await chrome.storage.local.get([
+    "resumes",
+    "activeResumeId",
+  ]);
+  const activeId = activeResumeId || DEFAULT_RESUME_ID;
+
+  const list = Object.values(resumes).sort(
+    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+  );
+
+  select.textContent = "";
+  list.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r.id;
+    opt.textContent = r.name || "未命名版本";
+    opt.title = `最近更新：${formatTime(r.updatedAt)}`;
+    opt.selected = r.id === activeId;
+    select.appendChild(opt);
+  });
+
+  // 同步删除按钮可用状态：只剩一个版本时不允许删除
+  const delBtn = document.getElementById("btn-del-resume");
+  if (delBtn) delBtn.disabled = list.length <= 1;
+}
+
+/** 切换简历版本：有未保存修改时先询问 */
+async function switchResume() {
+  const select = document.getElementById("resume-select");
+  const nextId = select.value;
+  if (!nextId || nextId === state.resumeId) return;
+
+  if (isDirty()) {
+    const ok = confirm("当前表单有未保存的修改，是否保存到原版本后再切换？\n（取消 = 丢弃修改）");
+    if (ok) {
+      await saveResume();
+    }
+  }
+
+  try {
+    await chrome.storage.local.set({ activeResumeId: nextId });
+  } catch (e) {
+    console.error("[求职简历助手] 切换版本失败：", e);
+    setTip("切换版本失败，请重试。", "error");
+    renderResumeList();
+    return;
+  }
+  await loadResume();
+}
+
+/** 新建一个空白简历版本 */
+async function createResume() {
+  const name = prompt("新简历版本的名称：", DEFAULT_RESUME_NAME);
+  if (name === null) return;
+  const finalName = name.trim() || DEFAULT_RESUME_NAME;
+
+  const id = genResumeId();
+  try {
+    const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
+    resumes[id] = { id, name: finalName, data: {}, updatedAt: Date.now() };
+    await chrome.storage.local.set({ resumes, activeResumeId: id });
+  } catch (e) {
+    console.error("[求职简历助手] 新建版本失败：", e);
+    setTip("新建版本失败，请重试。", "error");
+    return;
+  }
+
+  renderResumeList();
+  await loadResume();
+  setTip(`已新建版本「${finalName}」，填写后记得保存。`, "ok");
+}
+
+/** 把当前激活版本（已保存的数据）复制为一个新版本 */
+async function duplicateResume() {
+  const select = document.getElementById("resume-select");
+  const srcId = state.resumeId;
+
+  let srcName = DEFAULT_RESUME_NAME;
+  let srcData = {};
+  try {
+    const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
+    srcName = resumes[srcId]?.name || DEFAULT_RESUME_NAME;
+    srcData = resumes[srcId]?.data || {};
+  } catch (e) {
+    console.error("[求职简历助手] 读取源版本失败：", e);
+  }
+
+  const name = prompt("复制后的版本名称：", `${srcName} 副本`);
+  if (name === null) return;
+  const finalName = name.trim() || `${srcName} 副本`;
+
+  const id = genResumeId();
+  try {
+    const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
+    resumes[id] = {
+      id,
+      name: finalName,
+      data: { ...srcData },
+      updatedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ resumes, activeResumeId: id });
+  } catch (e) {
+    console.error("[求职简历助手] 复制版本失败：", e);
+    setTip("复制版本失败，请重试。", "error");
+    return;
+  }
+
+  renderResumeList();
+  await loadResume();
+  setTip(`已复制为「${finalName}」（${countFilled(srcData)} 项字段）。`, "ok");
+}
+
+/** 删除当前激活版本，删除后自动切换到列表中的第一个版本 */
+async function deleteResume() {
+  const select = document.getElementById("resume-select");
+  const delId = state.resumeId;
+
+  let resumes = {};
+  let name = "";
+  try {
+    ({ resumes = {} } = await chrome.storage.local.get(["resumes"]));
+  } catch (e) {
+    console.error("[求职简历助手] 读取版本列表失败：", e);
+    setTip("删除失败，请重试。", "error");
+    return;
+  }
+
+  name = resumes[delId]?.name || "当前版本";
+  if (Object.keys(resumes).length <= 1) {
+    setTip("至少需要保留一个简历版本。", "error");
+    return;
+  }
+  if (!confirm(`确定删除简历版本「${name}」吗？此操作不可恢复。`)) return;
+
+  delete resumes[delId];
+  const nextId = Object.keys(resumes)[0];
+  try {
+    await chrome.storage.local.set({ resumes, activeResumeId: nextId });
+  } catch (e) {
+    console.error("[求职简历助手] 删除版本失败：", e);
+    setTip("删除失败，请重试。", "error");
+    return;
+  }
+
+  renderResumeList();
+  await loadResume();
+  setTip(`已删除「${name}」，当前切换到「${resumes[nextId]?.name || "未命名"}」。`, "ok");
+}
+
+/** 生成版本 id：时间戳 + 随机后缀，避免同毫秒创建多个版本时冲突 */
+function genResumeId() {
+  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** 表单当前内容与已载入数据是否有差异（用于切换/关闭前提醒） */
+function isDirty() {
+  return JSON.stringify(readForm()) !== JSON.stringify(state.loadedData);
+}
+
 /* ========== 读写存储 ========== */
 
-/** 读取当前激活简历，回填表单 */
+/** 读取当前激活简历，回填表单；首次使用自动创建默认版本，兼容阶段 2 的旧数据 */
 async function loadResume() {
   try {
-    const { resumes = {}, activeResumeId } = await chrome.storage.local.get([
+    let { resumes = {}, activeResumeId } = await chrome.storage.local.get([
       "resumes",
       "activeResumeId",
     ]);
 
-    const id = activeResumeId || DEFAULT_RESUME_ID;
-    const resume = resumes[id];
-    if (!resume || !resume.data) {
-      setTip("还没有保存过简历，填写后点「保存简历」。");
-      return;
+    // 兼容阶段 2 旧结构：只有单份 resume 数据时迁移为默认版本
+    if (Object.keys(resumes).length === 0) {
+      const legacy = await chrome.storage.local.get(["resume"]);
+      if (legacy.resume && typeof legacy.resume === "object") {
+        resumes[DEFAULT_RESUME_ID] = {
+          id: DEFAULT_RESUME_ID,
+          name: DEFAULT_RESUME_NAME,
+          data: legacy.resume,
+          updatedAt: Date.now(),
+        };
+        await chrome.storage.local.set({
+          resumes,
+          activeResumeId: DEFAULT_RESUME_ID,
+        });
+      }
     }
 
-    writeForm(resume.data);
-    setTip(`已载入简历：${resume.name || "默认"}（${countFilled(resume.data)} 项）`, "ok");
+    // 首次使用：创建一个空的默认版本，保证下拉框始终有内容
+    if (Object.keys(resumes).length === 0) {
+      resumes[DEFAULT_RESUME_ID] = {
+        id: DEFAULT_RESUME_ID,
+        name: DEFAULT_RESUME_NAME,
+        data: {},
+        updatedAt: Date.now(),
+      };
+      activeResumeId = DEFAULT_RESUME_ID;
+      await chrome.storage.local.set({ resumes, activeResumeId });
+    }
+
+    const id = activeResumeId && resumes[activeResumeId]
+      ? activeResumeId
+      : DEFAULT_RESUME_ID;
+    const resume = resumes[id];
+
+    state.resumeId = id;
+    writeForm(resume.data || {});
+    state.loadedData = readForm();
+
+    const count = countFilled(resume.data || {});
+    setTip(
+      count > 0
+        ? `已载入简历：${resume.name || "默认"}（${count} 项）`
+        : `当前版本「${resume.name || "默认"}」还没有内容，填写后点「保存简历」。`,
+      count > 0 ? "ok" : ""
+    );
+
+    renderResumeList();
   } catch (e) {
     console.error("[求职简历助手] 读取简历失败：", e);
     setTip("读取本地简历失败，请重新加载插件。", "error");
   }
 }
 
-/** 收集表单 → 写入本地存储 */
+/** 收集表单 → 写入当前激活版本 */
 async function saveResume() {
   const data = readForm();
 
@@ -169,11 +391,11 @@ async function saveResume() {
   }
 
   const btn = document.getElementById("btn-save");
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
 
   try {
     const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
-    const id = DEFAULT_RESUME_ID;
+    const id = state.resumeId;
     const record = resumes[id];
 
     resumes[id] = {
@@ -184,12 +406,14 @@ async function saveResume() {
     };
 
     await chrome.storage.local.set({ resumes, activeResumeId: id });
-    setTip(`已保存简历（${countFilled(data)} 项字段）。`, "ok");
+    state.loadedData = readForm();
+    setTip(`已保存「${resumes[id].name}」（${countFilled(data)} 项字段）。`, "ok");
+    renderResumeList();
   } catch (e) {
     console.error("[求职简历助手] 保存简历失败：", e);
     setTip("保存失败，请重试。", "error");
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -207,10 +431,8 @@ async function fillCurrentPage() {
       setTip("请先填写简历内容再填充。", "error");
       return;
     }
-    await chrome.storage.local.set({
-      resumes: await mergeResume(data),
-      activeResumeId: DEFAULT_RESUME_ID,
-    });
+    const resumes = await mergeResume(data, state.resumeId);
+    await chrome.storage.local.set({ resumes });
 
     const tab = await resolveTargetTab();
     if (!tab || !tab.id) {
@@ -347,10 +569,9 @@ function runInTab(tabId, action, payload) {
   });
 }
 
-/** 合并当前表单到存储中的简历记录（保留版本名等元信息） */
-async function mergeResume(data) {
+/** 合并当前表单到指定版本（保留版本名等元信息） */
+async function mergeResume(data, id) {
   const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
-  const id = DEFAULT_RESUME_ID;
   const record = resumes[id];
   resumes[id] = {
     id,
@@ -402,4 +623,12 @@ function setTip(text, level) {
   if (!el) return;
   el.textContent = text;
   el.className = `tip ${level || ""}`.trim();
+}
+
+/** 时间戳 → "10-25 14:30" 形式的短标签（用于下拉框 title） */
+function formatTime(ts) {
+  if (!ts) return "未知";
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

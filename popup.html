@@ -9,10 +9,18 @@
   <main class="panel">
     <header class="panel-header">
       <h1>求职简历助手</h1>
-      <span class="version" id="version">v0.4.0</span>
+      <span class="version" id="version">v0.5.0</span>
     </header>
 
     <div class="fatal-box" id="fatal-box"></div>
+
+    <!-- 简历版本工具栏：切换 / 新建 / 复制 / 删除 -->
+    <div class="version-bar">
+      <select id="resume-select" class="version-select" title="切换简历版本"></select>
+      <button id="btn-new-resume" class="mini-btn" type="button" title="新建简历版本">＋</button>
+      <button id="btn-dup-resume" class="mini-btn" type="button" title="把当前版本复制为一个新版本">⧉</button>
+      <button id="btn-del-resume" class="mini-btn danger" type="button" title="删除当前版本">✕</button>
+    </div>
 
     <form id="resume-form" class="form" autocomplete="off">
       <!-- ========== 基本信息 ========== -->
