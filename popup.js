@@ -62,7 +62,7 @@ function initVersion() {
   try {
     el.textContent = `v${chrome.runtime.getManifest().version}`;
   } catch (e) {
-    el.textContent = "v0.2.0";
+    el.textContent = "v0.3.0";
   }
 }
 
@@ -86,20 +86,25 @@ async function runDiagnose() {
       return;
     }
 
-    const resp = await sendToTab(tab.id, { type: "DIAGNOSE" });
+    const resp = await runInTab(tab.id, "DIAGNOSE");
     if (!resp) {
       box.textContent = `${hostOf(tab.url) || "目标页面"} 未响应，请刷新该页面后重试。`;
       return;
     }
+    if (!resp.ok) {
+      box.textContent = resp.reason || "诊断失败。";
+      return;
+    }
 
-    box.textContent = formatDiagnose(resp);
-  } catch (e) {
+    box.textContent = formatDiagnose(resp);  } catch (e) {
     box.textContent = "诊断失败：" + e.message;
   }
 }
 
 function formatDiagnose(d) {
-  const lines = [`${d.host}（${d.frame}）共 ${d.total} 个候选控件`];
+  const lines = [
+    `${d.host}（${d.frame}）适配器：${d.adapter || "通用规则"}，共 ${d.total} 个候选控件`,
+  ];
   if (!d.items || !d.items.length) {
     lines.push("页面上没有可填充的输入框。");
     return lines.join("\n");
@@ -200,13 +205,10 @@ async function fillCurrentPage() {
       return;
     }
 
-    const resp = await sendToTab(tab.id, { type: "FILL_RESUME", payload: data });
+    const resp = await runInTab(tab.id, "FILL_RESUME", data);
 
     if (!resp) {
-      setTip(
-        `目标页面（${hostOf(tab.url) || "未知"}）没有响应，请切到该页面刷新一次再试。`,
-        "error"
-      );
+      setTip("与扩展后台通信失败，请重新加载插件后重试。", "error");
       return;
     }
     if (!resp.ok) {
@@ -243,21 +245,21 @@ const SUPPORTED_DOMAINS = [
 
 /**
  * 决定"填哪个标签页"，按优先级：
- *  1. 当前活动标签页（从工具栏弹窗点击时的正常场景）
- *  2. 后台记录下的"发起面板请求的招聘页面"标签（从页面右下角按钮打开面板时记录）
- *  3. 所有标签页里最近访问过的招聘站点
+ *  1. 当前活动标签页（普通网页即可，脚本会按需动态注入）
+ *  2. 后台记录下的"发起面板请求的页面"标签（从页面右下角按钮打开面板时记录）
+ *  3. 所有标签页里最近访问过的页面，招聘站点优先
  * 这样无论从弹窗、整页面板还是页面悬浮按钮进入，都能填到对的页面。
  */
 async function resolveTargetTab() {
   const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (active && isSupportedUrl(active.url)) return active;
+  if (active && isInjectableUrl(active.url)) return active;
 
   // 后台在打开面板时记下的来源标签
   try {
     const stored = await chrome.storage.session.get("lastJobTabId");
     if (stored && stored.lastJobTabId) {
       const tab = await chrome.tabs.get(stored.lastJobTabId);
-      if (tab && isSupportedUrl(tab.url)) return tab;
+      if (tab && isInjectableUrl(tab.url)) return tab;
     }
   } catch (e) {
     // 标签可能已关闭，继续往下找
@@ -265,14 +267,25 @@ async function resolveTargetTab() {
 
   const all = await chrome.tabs.query({});
   const candidates = all
-    .filter((t) => t.id && isSupportedUrl(t.url))
-    .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    .filter((t) => t.id && isInjectableUrl(t.url))
+    .sort((a, b) => {
+      const knownA = isKnownJobSite(a.url) ? 1 : 0;
+      const knownB = isKnownJobSite(b.url) ? 1 : 0;
+      if (knownA !== knownB) return knownB - knownA;
+      return (b.lastAccessed || 0) - (a.lastAccessed || 0);
+    });
 
   return candidates[0] || null;
 }
 
-function isSupportedUrl(url) {
-  if (!url) return false;
+/** 普通网页才可注入（排除 chrome:// 、扩展页、about: 等） */
+function isInjectableUrl(url) {
+  return typeof url === "string" && /^https?:/i.test(url);
+}
+
+/** 是否属于已内置适配器的招聘站点 */
+function isKnownJobSite(url) {
+  if (!isInjectableUrl(url)) return false;
   let host = "";
   try {
     host = new URL(url).hostname;
@@ -307,12 +320,12 @@ function describeFailure(scan) {
   return base;
 }
 
-/** 向 content script 发消息，捕获"未注入"错误 */
-function sendToTab(tabId, message) {
+/** 向后台发指令：确保脚本已注入后再执行指定动作 */
+function runInTab(tabId, action, payload) {
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, message, (resp) => {
+    chrome.runtime.sendMessage({ type: "RUN_IN_TAB", tabId, action, payload }, (resp) => {
       if (chrome.runtime.lastError) {
-        resolve(null); // 页面没有 content script
+        resolve(null);
         return;
       }
       resolve(resp);

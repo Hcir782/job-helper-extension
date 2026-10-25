@@ -2,19 +2,21 @@
  * background.js —— 扩展后台 Service Worker（Manifest V3）
  *
  * 职责：
- *  1. 接收内容脚本的请求，打开完整操作面板（popup.html 以标签页形式）
- *  2. 阶段 3 的投递记录写入也会以这里为统一入口
+ *  1. 打开/复用完整操作面板标签页，并记录发起请求的招聘页标签
+ *  2. 按需动态注入内容脚本（activeTab + chrome.scripting）
+ *     —— 这是"任意招聘网站都能用"的关键：不依赖 manifest 里枚举域名
+ *  3. 统一转发 FILL_RESUME / DIAGNOSE 请求并回传结果
  *
- * 为什么需要它：内容脚本运行在网页里，无法直接打开扩展页面，
- * 必须通过 chrome.runtime.sendMessage 让后台调 chrome.tabs.create。
- *
- * 注意：这里刻意不申请 "tabs" 权限（会触发"读取浏览记录"的权限警告），
- * 改用 chrome.storage.session 记住面板标签页 id，避免重复开标签。
+ * 为什么需要它：内容脚本运行在网页里，既打不开扩展页面，
+ * 也无法自己注入到没有预先声明的站点。
  */
 
 const PANEL_PATH = "popup.html";
 const PANEL_TAB_KEY = "panelTabId";
 const JOB_TAB_KEY = "lastJobTabId";
+
+/** 注入顺序不能变：词典/适配器要先于 content.js 加载 */
+const CONTENT_FILES = ["field-dictionary.js", "site-adapters.js", "content.js"];
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg !== "object") return;
@@ -24,8 +26,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // 异步响应，保持消息通道
   }
 
+  if (msg.type === "RUN_IN_TAB") {
+    runInTab(msg.tabId, msg.action, msg.payload).then(sendResponse);
+    return true;
+  }
+
   return false;
 });
+
+/* ==================== 面板 ==================== */
 
 /**
  * 处理"打开面板"请求。
@@ -70,6 +79,63 @@ async function openPanel() {
     console.error("[求职简历助手] 打开面板失败：", e);
     return false;
   }
+}
+
+/* ==================== 动态注入 + 转发 ==================== */
+
+/**
+ * 确保目标标签页里已有内容脚本。
+ * 已注入（PING 有回应）则跳过；否则用 chrome.scripting 现场注入。
+ */
+async function ensureContent(tabId) {
+  const pong = await sendToTab(tabId, { type: "PING" });
+  if (pong && pong.ok) return { injected: false };
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: CONTENT_FILES,
+  });
+
+  await sleep(150);
+
+  const again = await sendToTab(tabId, { type: "PING" });
+  if (!again) throw new Error("脚本已注入但页面无响应，请刷新页面后重试");
+
+  return { injected: true };
+}
+
+/** 在指定标签页执行填充或诊断 */
+async function runInTab(tabId, action, payload) {
+  if (!tabId) return { ok: false, reason: "没有目标标签页" };
+
+  try {
+    await ensureContent(tabId);
+  } catch (e) {
+    return { ok: false, reason: "无法注入脚本：" + e.message };
+  }
+
+  const message = { type: action };
+  if (payload !== undefined) message.payload = payload;
+
+  const resp = await sendToTab(tabId, message);
+  if (!resp) return { ok: false, reason: "页面未响应，请刷新后重试" };
+  return resp;
+}
+
+function sendToTab(tabId, message) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, message, (resp) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+        return;
+      }
+      resolve(resp);
+    });
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* 安装 / 更新时的日志，便于在扩展页确认后台已启动 */

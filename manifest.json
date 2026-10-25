@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "求职简历助手",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "中文简历自动填充、简历版本管理、投递记录管理与 CSV 导出。数据全部保存在浏览器本地，不上传云端。",
   "action": {
     "default_popup": "popup.html",
@@ -24,7 +24,9 @@
     }
   },
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://*.zhipin.com/*",
@@ -42,7 +44,11 @@
         "https://*.51job.com/*",
         "https://*.lagou.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "field-dictionary.js",
+        "site-adapters.js",
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }

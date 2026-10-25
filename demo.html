@@ -133,7 +133,9 @@
     </div>
   </div>
 
-  <!-- 直接复用 content.js 里的填充引擎，保证演示和真实注入用的是同一套代码 -->
+  <!-- 直接复用生产环境的三段脚本，保证演示和真实注入用的是同一套代码 -->
+  <script src="field-dictionary.js"></script>
+  <script src="site-adapters.js"></script>
   <script src="content.js"></script>
   <script src="demo.js"></script>
 </body>

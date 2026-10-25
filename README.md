@@ -11,13 +11,24 @@
 | 插件基础骨架（Manifest V3 + Popup + Content Script） | ✅ 已完成 |
 | 简历信息本地存储 + 招聘网页一键填充 | ✅ 已完成（v0.2.0） |
 | 模拟招聘表单演示页 + 页面结构诊断 | ✅ 已完成 |
+| 动态注入（activeTab + chrome.scripting，任意网站可用） | ✅ 已完成（v0.3.0） |
+| 字段别名词典 + 站点/组件库适配器 | ✅ 已完成（v0.3.0） |
 | 多简历版本管理（通用版 / 岗位定制版切换） | 📋 计划中 |
 | 投递记录台账（公司 / 岗位 / 时间 / 简历版本） | 📋 计划中 |
 | 投递记录导出 CSV（Excel 可直接打开） | 📋 计划中 |
 
 ## 支持的招聘网站
 
-Boss 直聘、猎聘、智联招聘、前程无忧、拉勾（`manifest.json` 中使用 `*.域名` 通配，包含各站点的子域名，例如猎聘简历页所在的 `h.liepin.com`）。
+**任意招聘网站都可以尝试填充**，因为内容脚本是按需动态注入的，不依赖域名白名单。
+
+内置了针对性适配器的站点：
+
+| 类型 | 覆盖 |
+| --- | --- |
+| 站点适配 | BOSS直聘、猎聘、智联招聘、前程无忧、拉勾 |
+| 组件库适配（企业自建招聘系统常用） | Ant Design、Element UI、Arco Design |
+
+未命中任何适配器时，会退回通用启发式规则（label / placeholder / aria-label / 邻近文本）。
 
 ## 安装步骤（开发者模式）
 
@@ -60,21 +71,25 @@ Boss 直聘、猎聘、智联招聘、前程无忧、拉勾（`manifest.json` �
 
 ```
 job-helper-extension/
-├─ manifest.json    # Manifest V3 配置：权限、popup、options、background、content script 注入规则
-├─ background.js    # Service Worker：打开/复用面板标签页，记录来源招聘页标签
-├─ content.js       # 注入招聘网页：字段识别、表单填充、注入徽标、悬浮入口、页面诊断
-├─ popup.html       # 面板（同时注册为"扩展程序选项"，可在独立标签页中整页编辑）
-├─ popup.js         # 面板交互：简历读写、一键填充、目标标签页选择、诊断展示
-├─ popup.css        # 面板与表单样式
-├─ demo.html        # 模拟招聘申请表演示页
-├─ demo.js          # 演示页逻辑，复用 content.js 中的填充引擎
-└─ .gitignore       # 忽略编辑器缓存、日志、系统垃圾文件
+├─ manifest.json         # Manifest V3 配置：权限、popup、options、background、content script 注入规则
+├─ background.js         # Service Worker：面板标签管理、按需动态注入、请求转发
+├─ field-dictionary.js   # 字段别名词典（17 个字段 × 多别名）
+├─ site-adapters.js      # 站点 / 组件库适配器注册表
+├─ content.js            # 注入网页：字段识别、表单填充、注入徽标、悬浮入口、页面诊断
+├─ popup.html            # 面板（同时注册为"扩展程序选项"，可在独立标签页中整页编辑）
+├─ popup.js              # 面板交互：简历读写、一键填充、目标标签页选择、诊断展示
+├─ popup.css             # 面板与表单样式
+├─ demo.html             # 模拟招聘申请表演示页
+├─ demo.js               # 演示页逻辑，复用同一套填充引擎
+└─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
 ```
 
 ## 技术要点
 
+- **按需动态注入**：manifest 只对 5 个已知站点声明静态注入；其他页面在用户点击填充时，由 `background.js` 调用 `chrome.scripting.executeScript`（配合 `activeTab` 权限）现场注入，因此**任何招聘网站都能用**，也避免了枚举域名的漏配问题。
+- **字段别名词典**：17 个字段各自维护一份别名表（如手机号 ← 手机号/联系电话/联系方式/移动电话/phone…），命中别名越长得分越高。
+- **站点适配器**：为 5 个招聘站点和 3 个常用前端组件库分别声明"字段容器选择器 + 文案选择器"，先定位结构再取文案，比纯关键词匹配稳得多。
 - **React 受控组件适配**：Boss 直聘等站点使用 React，直接 `el.value = x` 会被框架内部状态覆盖。本项目改为调用原型链上的原生 `value` setter，再派发 `input` / `change` / `blur` 事件，框架才能感知变化。
-- **字段识别打分制**：控件上下文取自 placeholder、aria-label、`label[for]`、包裹 label、向上两层短文本与前置兄弟节点文本；关键词命中越长得分越高，因此「期望职位」不会被「职位」抢走。
 - **中文 label 去空白匹配**：招聘站点的 label 常写成「姓　名」「手 机 号」，匹配前统一去除空白。
 - **防误填**：英文关键词在 `name` / `id` 属性中要求边界匹配，避免 `companyName` 被识别成「姓名」；中文关键词只匹配可见文案，避免被 class 名干扰。
 - **富文本支持**：`contenteditable` 编辑器通过 `execCommand('insertText')` 写入，适配 Vue/React 富文本组件。
@@ -95,6 +110,6 @@ MIT License
 
 ## 致谢
 
-字段识别与站点适配策略在后续迭代中参考了以下开源项目的思路，特此致谢：
+本项目的字段别名词典与站点适配器结构，参考了以下开源项目：
 
-- [OpenJobAutofill](https://github.com/Br1an67/OpenJobAutofill)（MIT License, Copyright (c) 2026 Br1an67）
+- [OpenJobAutofill](https://github.com/Br1an67/OpenJobAutofill)（MIT License, Copyright (c) 2026 Br1an67）——字段别名表的整理思路与站点适配器设计

@@ -19,29 +19,31 @@ const SHOW_INJECT_BADGE = true;
 const SHOW_FLOATING_BUTTON = true;
 
 /**
- * 字段匹配规则：key 为简历字段名，value 为该字段在页面上的可能文案。
- * 中文关键词只在"可见文案"（label / placeholder / aria-label）里匹配；
- * 英文关键词会在 name / id 属性里做边界匹配，避免 companyName 误命中 name。
+ * 字段匹配规则来自 field-dictionary.js（别名词典），站点结构识别来自 site-adapters.js。
+ * 两者都由 manifest 的 content_scripts 或 background 的动态注入按顺序先加载。
+ * 这里保留一份兜底词典，避免单独加载 content.js 时（例如演示页）报错。
  */
-const FIELD_RULES = {
-  name: ["姓名", "真实姓名", "名字", "name"],
-  gender: ["性别", "gender", "sex"],
-  phone: ["手机号码", "手机号", "手机", "联系电话", "联系方式", "电话", "phone", "mobile", "tel"],
-  birth: ["出生年月", "出生日期", "生日", "birthday", "birth"],
-  email: ["电子邮箱", "邮箱", "电子邮件", "email", "mail"],
-  education: ["最高学历", "学历", "education", "degree"],
-  graduationYear: ["毕业年份", "毕业时间", "毕业年度", "graduation"],
-  school: ["毕业院校", "毕业学校", "学校", "院校", "school", "university", "college"],
-  major: ["所学专业", "专业", "major"],
-  workYears: ["工作年限", "工作经验", "workyear", "experience"],
-  expectSalary: ["期望薪资", "期望月薪", "期望薪水", "salary"],
-  currentCompany: ["当前公司", "所在公司", "公司名称", "company"],
-  currentPosition: ["当前职位", "现任职位", "当前职务", "position", "title"],
-  expectPosition: ["期望职位", "意向职位", "期望岗位", "期望工作", "job"],
-  expectCity: ["期望城市", "意向城市", "期望地点", "city", "location"],
-  selfIntro: ["自我评价", "自我介绍", "个人简介", "个人优势", "intro", "about"],
-  projectExp: ["项目经历", "项目经验", "project"],
-};
+const FIELD_RULES =
+  typeof JH_FIELD_KEYWORDS !== "undefined"
+    ? JH_FIELD_KEYWORDS
+    : {
+        name: ["姓名", "name"],
+        gender: ["性别", "gender"],
+        phone: ["手机号", "手机", "联系电话", "phone", "mobile"],
+        email: ["邮箱", "email"],
+        education: ["学历", "education"],
+        school: ["毕业院校", "学校", "school"],
+        major: ["专业", "major"],
+        expectPosition: ["期望职位", "期望岗位"],
+      };
+
+/** 当前页面命中的站点适配器（惰性计算，页面结构可能异步渲染，每次填充前重算） */
+let jhAdapter = null;
+
+function refreshAdapter() {
+  jhAdapter = typeof jhPickAdapter === "function" ? jhPickAdapter() : null;
+  return jhAdapter;
+}
 
 /* ==================== 消息监听 ==================== */
 
@@ -94,6 +96,8 @@ function fillResume(payload) {
   const filled = [];
   const missed = [];
   const doneFields = new Set();
+
+  refreshAdapter(); // 页面可能刚渲染完，重新识别站点结构
 
   const textBoxes = collectTextBoxes();
   const editables = collectEditables();
@@ -186,6 +190,7 @@ function fillResume(payload) {
  * 没有 DevTools 时靠它看清页面结构，便于调整匹配规则。
  */
 function diagnose() {
+  const adapter = refreshAdapter();
   const items = [];
 
   collectTextBoxes().forEach((el) => {
@@ -220,6 +225,7 @@ function diagnose() {
     ok: true,
     host: location.hostname,
     frame: window.top === window.self ? "top" : "iframe",
+    adapter: adapter ? `${adapter.name}（置信度 ${adapter.confidence}）` : "通用规则",
     total: items.length,
     items: items.slice(0, 30),
   };
@@ -313,6 +319,24 @@ function getTextContext(el) {
     el.getAttribute("aria-label"),
     el.getAttribute("title"),
   ];
+
+  // 优先用站点/组件库适配器定位字段文案
+  if (jhAdapter) {
+    try {
+      const container = el.closest(jhAdapter.containerSelector);
+      if (container) {
+        const labelEl = container.querySelector(jhAdapter.labelSelector);
+        if (labelEl && labelEl.innerText) {
+          parts.push(labelEl.innerText);
+        } else {
+          const text = (container.innerText || "").trim();
+          if (text && text.length <= 40) parts.push(text);
+        }
+      }
+    } catch (e) {
+      // 选择器异常时退回通用规则
+    }
+  }
 
   // <label for="xxx"> 形式
   if (el.id) {
