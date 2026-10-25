@@ -17,7 +17,7 @@
  */
 
 /**
- * 简历字段名（40 个），数据源为 field-dictionary.js 的 JH_FIELD_GROUPS，
+ * 简历字段名（44 个），数据源为 field-dictionary.js 的 JH_FIELD_GROUPS，
  * 保证「面板表单 / 别名词典 / 预设 JSON」三处字段集合始终一致。
  * 词典未加载时用下面的兜底列表（顺序与分组一致）。
  */

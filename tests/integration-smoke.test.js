@@ -19,6 +19,9 @@ const vm = require("vm");
 
 const ROOT = path.join(__dirname, "..");
 
+/* 版本号以 manifest.json 为唯一来源，避免测试里写死导致每次发版都要手改 */
+const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+
 /* 字段集合以 field-dictionary.js 的 JH_FIELD_GROUPS 为唯一来源 */
 const DICT_SRC = fs.readFileSync(path.join(ROOT, "field-dictionary.js"), "utf8");
 const { JH_FIELD_GROUPS } = new Function(
@@ -38,7 +41,7 @@ function createSWChrome() {
     runtime: {
       onMessage: { addListener: (fn) => listeners.message.push(fn) },
       onInstalled: { addListener: (fn) => listeners.installed.push(fn) },
-      getManifest: () => ({ version: "0.6.0" }),
+      getManifest: () => ({ version: MANIFEST.version }),
       getURL: (p) => `chrome-extension://abcdefgh/${p}`,
       lastError: null,
     },
@@ -157,7 +160,7 @@ function createPopupEnv() {
 
   const chrome = {
     runtime: {
-      getManifest: () => ({ version: "0.7.0" }),
+      getManifest: () => ({ version: MANIFEST.version }),
       getURL: (p) => `chrome-extension://abcdefgh/${p}`,
       sendMessage: (msg, cb) => {
         // 模拟 SW 的响应
@@ -299,7 +302,11 @@ async function test(name, fn) {
     assert.ok(env.popupStore.resumes && env.popupStore.resumes.default, "应创建默认版本");
     const sel = env.elements["resume-select"];
     assert.ok(sel && sel.children.length >= 1, "版本下拉框应有选项");
-    assert.ok(env.elements["version"].textContent.includes("0.7.0"), "版本号应显示");
+    assert.strictEqual(
+      env.elements["version"].textContent,
+      `v${MANIFEST.version}`,
+      `面板版本号应与 manifest.json 一致（期望 v${MANIFEST.version}）`
+    );
     const ledger = env.elements["ledger-list"];
     assert.ok(ledger && ledger.innerHTML.length > 0, "投递记录区应被渲染");
   });
