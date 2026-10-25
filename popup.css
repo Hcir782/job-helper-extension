@@ -468,3 +468,43 @@ body {
   background: #d5dbe3;
   border-radius: 3px;
 }
+
+/* ========== 标签页 / 独立窗口模式：面板居中显示 ========== */
+/*
+ * 作为浏览器弹窗打开时，视口宽度本身就是 380px，下面的媒体查询不生效，
+ * 面板保持贴边紧凑布局；当它以标签页方式打开（点「简」按钮、扩展选项页、
+ * 快捷键在整页模式下），视口变宽，就把面板做成一张居中卡片，避免贴在左上角。
+ */
+@media (min-width: 480px) {
+  html {
+    min-height: 100%;
+    padding: 24px;
+    display: flex;
+    background: #e9eef5;
+    background-image: radial-gradient(circle at 50% 0%, #ffffff 0%, #e6ecf4 55%, #dfe7f1 100%);
+  }
+
+  body {
+    /* margin:auto 在 flex 容器里同时实现水平+垂直居中；内容比视口高时自动退化为 0，不会被裁掉顶部 */
+    margin: auto;
+    width: 420px;
+    max-width: 100%;
+    height: auto;
+    overflow: hidden;
+    background: #f5f7fa;
+    border: 1px solid #dfe6ee;
+    border-radius: 14px;
+    box-shadow: 0 14px 36px rgba(23, 43, 77, 0.12), 0 2px 6px rgba(23, 43, 77, 0.05);
+  }
+
+  /* 标签页模式不再限制面板高度：让整页自然滚动，避免「表单一段滚动 + 投递记录一段滚动」的割裂感 */
+  .panel {
+    max-height: none;
+    padding: 16px 18px 0;
+  }
+
+  .form {
+    overflow: visible;
+    padding-right: 2px;
+  }
+}
