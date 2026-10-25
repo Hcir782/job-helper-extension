@@ -108,8 +108,9 @@ async function ensureContent(tabId) {
 async function runInTab(tabId, action, payload) {
   if (!tabId) return { ok: false, reason: "没有目标标签页" };
 
+  let injectInfo = { injected: false };
   try {
-    await ensureContent(tabId);
+    injectInfo = await ensureContent(tabId);
   } catch (e) {
     return { ok: false, reason: "无法注入脚本：" + e.message };
   }
@@ -119,6 +120,9 @@ async function runInTab(tabId, action, payload) {
 
   const resp = await sendToTab(tabId, message);
   if (!resp) return { ok: false, reason: "页面未响应，请刷新后重试" };
+
+  // 把"是否刚注入"带回去，面板可以据此提示
+  if (typeof resp === "object") resp.injected = !!injectInfo.injected;
   return resp;
 }
 

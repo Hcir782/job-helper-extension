@@ -221,8 +221,9 @@ async function fillCurrentPage() {
     if (filled === 0) {
       setTip(describeFailure(resp.scan), "error");
     } else {
+      const injectedTip = resp.injected ? "（已按需注入脚本）" : "";
       setTip(
-        `已填充 ${filled} 个字段${missed ? `，${missed} 个未匹配` : ""}。`,
+        `已填充 ${filled} 个字段${missed ? `，${missed} 个未匹配` : ""}${injectedTip}。`,
         "ok"
       );
     }
