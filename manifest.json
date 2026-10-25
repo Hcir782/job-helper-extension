@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "求职简历助手",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "中文简历自动填充、简历版本管理、投递记录管理与 CSV 导出。数据全部保存在浏览器本地，不上传云端。",
   "action": {
     "default_popup": "popup.html",

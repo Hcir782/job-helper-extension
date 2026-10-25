@@ -191,6 +191,102 @@ body {
   line-height: 1.2;
 }
 
+/* ========== 投递记录 ========== */
+.ledger {
+  margin-bottom: 10px;
+}
+
+.ledger-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ledger-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a5b6c;
+  padding-left: 8px;
+  border-left: 3px solid #3498db;
+  line-height: 1.2;
+}
+
+.ledger-count {
+  font-size: 11px;
+  color: #95a5a6;
+}
+
+.ledger-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ledger-list {
+  max-height: 118px;
+  overflow-y: auto;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #ffffff;
+  border: 1px solid #e4e9f0;
+  border-radius: 6px;
+}
+
+.ledger-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ledger-list::-webkit-scrollbar-thumb {
+  background: #d5dbe3;
+  border-radius: 3px;
+}
+
+.ledger-empty {
+  padding: 10px 0;
+  color: #95a5a6;
+  text-align: center;
+}
+
+.ledger-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 6px;
+  padding: 5px 0;
+  border-bottom: 1px dashed #eef2f6;
+}
+
+.ledger-row:last-child {
+  border-bottom: none;
+}
+
+.lr-company {
+  font-weight: 600;
+  color: #2c3e50;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lr-time {
+  margin-left: auto;
+  font-size: 10px;
+  color: #95a5a6;
+  white-space: nowrap;
+}
+
+.lr-sub {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: #7f8c9b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ========== 底部 ========== */
 .panel-footer {
   flex-shrink: 0;
@@ -295,6 +391,14 @@ body {
 
 .link-btn:hover {
   color: #2471a3;
+}
+
+.link-btn.danger {
+  color: #c0392b;
+}
+
+.link-btn.danger:hover {
+  color: #a12f22;
 }
 
 .dot {

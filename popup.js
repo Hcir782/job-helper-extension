@@ -59,6 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderResumeList();
     loadResume();
     loadFloatOption();
+    loadLedger();
   } catch (e) {
     showFatal(e.message);
   }
@@ -88,6 +89,10 @@ function bindEvents() {
   document.getElementById("btn-new-resume")?.addEventListener("click", createResume);
   document.getElementById("btn-dup-resume")?.addEventListener("click", duplicateResume);
   document.getElementById("btn-del-resume")?.addEventListener("click", deleteResume);
+
+  // 投递记录
+  document.getElementById("btn-export-csv")?.addEventListener("click", exportLedger);
+  document.getElementById("btn-clear-ledger")?.addEventListener("click", clearLedger);
 }
 
 /** 保存"是否在网页上显示悬浮按钮"，content.js 通过 storage.onChanged 实时响应 */
@@ -318,6 +323,121 @@ function isDirty() {
   return JSON.stringify(readForm()) !== JSON.stringify(state.loadedData);
 }
 
+/* ========== 投递记录 ========== */
+
+/** 拉取投递记录并渲染（后台按时间倒序返回） */
+async function loadLedger() {
+  try {
+    const resp = await sendMsg({ type: "GET_APPLICATIONS" });
+    if (resp && resp.ok) {
+      renderLedger(resp.list || []);
+    } else {
+      renderLedger([]);
+    }
+  } catch (e) {
+    console.error("[求职简历助手] 读取投递记录失败：", e);
+    renderLedger([]);
+  }
+}
+
+/** 渲染投递记录列表（最多显示 50 条，倒序） */
+function renderLedger(list) {
+  const box = document.getElementById("ledger-list");
+  const count = document.getElementById("ledger-count");
+  if (!box) return;
+
+  if (count) count.textContent = `${list.length} 条`;
+
+  if (!list.length) {
+    box.innerHTML =
+      '<div class="ledger-empty">暂无投递记录，打开支持的招聘站点即自动登记</div>';
+    return;
+  }
+
+  box.innerHTML = list
+    .slice(0, 50)
+    .map((r) => {
+      const company = escapeHtml(r.company);
+      const position = escapeHtml(r.position);
+      const resume = r.resumeName ? ` · ${escapeHtml(r.resumeName)}` : "";
+      const time = JH_LEDGER.jhFormatTime(r.sentAt);
+      return (
+        `<div class="ledger-row">` +
+        `<span class="lr-company" title="${company}">${company}</span>` +
+        `<span class="lr-time">${time}</span>` +
+        `<span class="lr-sub">${position}${resume}</span>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+/** 导出 CSV（带 BOM，Excel 直接打开中文不乱码） */
+async function exportLedger() {
+  try {
+    const resp = await sendMsg({ type: "GET_APPLICATIONS" });
+    if (!resp || !resp.ok || !resp.list || !resp.list.length) {
+      setTip("暂无投递记录可导出。", "error");
+      return;
+    }
+
+    const csv = JH_LEDGER.jhToCSV(resp.list);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = JH_LEDGER.jhCsvFileName();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    setTip(`已导出 ${resp.list.length} 条投递记录（CSV）。`, "ok");
+  } catch (e) {
+    console.error("[求职简历助手] 导出 CSV 失败：", e);
+    setTip("导出失败，请重试。", "error");
+  }
+}
+
+/** 清空投递记录 */
+async function clearLedger() {
+  if (!confirm("确定清空全部投递记录吗？此操作不可恢复。")) return;
+
+  try {
+    const resp = await sendMsg({ type: "CLEAR_APPLICATIONS" });
+    if (resp && resp.ok) {
+      setTip("投递记录已清空。", "ok");
+      loadLedger();
+    } else {
+      setTip("清空失败，请重试。", "error");
+    }
+  } catch (e) {
+    console.error("[求职简历助手] 清空投递记录失败：", e);
+    setTip("清空失败，请重试。", "error");
+  }
+}
+
+/** 通用消息发送（带 Promise 包装，后台无响应时返回 null） */
+function sendMsg(message) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(message, (resp) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+        return;
+      }
+      resolve(resp);
+    });
+  });
+}
+
+function escapeHtml(text) {
+  return String(text == null ? "" : text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /* ========== 读写存储 ========== */
 
 /** 读取当前激活简历，回填表单；首次使用自动创建默认版本，兼容阶段 2 的旧数据 */
@@ -470,14 +590,15 @@ async function fillCurrentPage() {
   }
 }
 
-/** 支持的招聘站点主域名，与 manifest 的 *.domain 通配保持一致（含子域名） */
-const SUPPORTED_DOMAINS = [
-  "zhipin.com",
-  "liepin.com",
-  "zhaopin.com",
-  "51job.com",
-  "lagou.com",
-];
+/** 支持的招聘站点主域名（来自 site-adapters.js 的 JH_JOB_DOMAINS，含子域名） */
+const SUPPORTED_DOMAINS =
+  (typeof window !== "undefined" && window.JH_JOB_DOMAINS) || [
+    "zhipin.com",
+    "liepin.com",
+    "zhaopin.com",
+    "51job.com",
+    "lagou.com",
+  ];
 
 /**
  * 决定"填哪个标签页"，按优先级：

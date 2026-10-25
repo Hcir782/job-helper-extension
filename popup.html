@@ -9,7 +9,7 @@
   <main class="panel">
     <header class="panel-header">
       <h1>求职简历助手</h1>
-      <span class="version" id="version">v0.5.0</span>
+      <span class="version" id="version">v0.6.0</span>
     </header>
 
     <div class="fatal-box" id="fatal-box"></div>
@@ -143,6 +143,20 @@
     </form>
 
     <footer class="panel-footer">
+      <!-- 投递记录：自动登记 + CSV 导出 -->
+      <section class="ledger">
+        <div class="ledger-head">
+          <span class="ledger-title">投递记录</span>
+          <span class="ledger-count" id="ledger-count">0 条</span>
+          <span class="ledger-actions">
+            <button id="btn-export-csv" class="link-btn" type="button">导出 CSV</button>
+            <span class="dot">·</span>
+            <button id="btn-clear-ledger" class="link-btn danger" type="button">清空</button>
+          </span>
+        </div>
+        <div class="ledger-list" id="ledger-list">加载中…</div>
+      </section>
+
       <div class="btn-group">
         <button id="btn-save" class="btn btn-primary" type="button">保存简历</button>
         <button id="btn-fill" class="btn btn-ghost" type="button">一键填充</button>
@@ -161,6 +175,8 @@
     </footer>
   </main>
 
+  <script src="site-adapters.js"></script>
+  <script src="lib/ledger.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

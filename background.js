@@ -6,10 +6,13 @@
  *  2. 按需动态注入内容脚本（activeTab + chrome.scripting）
  *     —— 这是"任意招聘网站都能用"的关键：不依赖 manifest 里枚举域名
  *  3. 统一转发 FILL_RESUME / DIAGNOSE 请求并回传结果
+ *  4. 阶段 3：投递记录登记（去重后写入 chrome.storage.local.applications）
  *
  * 为什么需要它：内容脚本运行在网页里，既打不开扩展页面，
  * 也无法自己注入到没有预先声明的站点。
  */
+
+importScripts("lib/ledger.js"); // 提供 JH_LEDGER（去重 / CSV / 格式化）
 
 const PANEL_PATH = "popup.html";
 const PANEL_TAB_KEY = "panelTabId";
@@ -28,6 +31,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "RUN_IN_TAB") {
     runInTab(msg.tabId, msg.action, msg.payload).then(sendResponse);
+    return true;
+  }
+
+  if (msg.type === "RECORD_APPLICATION") {
+    recordApplication(msg.payload || {}).then(sendResponse);
+    return true;
+  }
+
+  if (msg.type === "GET_APPLICATIONS") {
+    getApplications().then(sendResponse);
+    return true;
+  }
+
+  if (msg.type === "CLEAR_APPLICATIONS") {
+    clearApplications().then(sendResponse);
     return true;
   }
 
@@ -140,6 +158,65 @@ function sendToTab(tabId, message) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* ==================== 投递记录（阶段 3） ==================== */
+
+/**
+ * 登记一条投递记录。
+ * 后台负责补上"用的哪个简历版本"，并调用 JH_LEDGER 去重
+ * （同公司 + 同岗位 + 同自然日只记一条）。
+ */
+async function recordApplication(payload) {
+  try {
+    const { applications = [], activeResumeId, resumes = {} } =
+      await chrome.storage.local.get(["applications", "activeResumeId", "resumes"]);
+
+    // 当前激活的简历版本（记录"这份简历投了哪些公司"）
+    const resume = (activeResumeId && resumes[activeResumeId]) || null;
+    const record = {
+      company: payload.company,
+      position: payload.position,
+      resumeId: resume ? resume.id : "",
+      resumeName: resume ? resume.name : "",
+      url: payload.url,
+      sentAt: Date.now(),
+    };
+
+    const { list, added } = JH_LEDGER.jhAddApplication(applications, record);
+    if (added) {
+      await chrome.storage.local.set({ applications: list });
+    }
+    return { ok: true, added, total: list.length };
+  } catch (e) {
+    console.error("[求职简历助手] 登记投递记录失败：", e);
+    return { ok: false, reason: e.message };
+  }
+}
+
+/** 读取全部投递记录（按时间倒序，面板直接渲染） */
+async function getApplications() {
+  try {
+    const { applications = [] } = await chrome.storage.local.get(["applications"]);
+    const list = applications
+      .slice()
+      .sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0));
+    return { ok: true, list };
+  } catch (e) {
+    console.error("[求职简历助手] 读取投递记录失败：", e);
+    return { ok: false, reason: e.message, list: [] };
+  }
+}
+
+/** 清空投递记录 */
+async function clearApplications() {
+  try {
+    await chrome.storage.local.set({ applications: [] });
+    return { ok: true };
+  } catch (e) {
+    console.error("[求职简历助手] 清空投递记录失败：", e);
+    return { ok: false, reason: e.message };
+  }
 }
 
 /* 安装 / 更新时的日志，便于在扩展页确认后台已启动 */

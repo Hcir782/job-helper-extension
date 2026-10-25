@@ -4,7 +4,7 @@
  * 职责：
  *  1. 接收 popup 下发的简历数据，匹配页面表单并自动填充
  *  2. 提供 PING 通信通道，供 popup 判断脚本是否已注入
- *  3. 阶段 3 将在此基础上提供"记录投递"所需的页面上下文
+ *  3. 阶段 3：探测当前页面的公司/岗位，自动登记投递记录（仅已知招聘站点）
  *
  * 关键技术点：Boss 直聘等站点是 React 受控组件，直接赋值 el.value 会被
  * React 的 onChange 逻辑覆盖。必须先调用原型链上的原生 value setter，
@@ -16,6 +16,9 @@ const SHOW_INJECT_BADGE = false;
 
 // 悬浮入口按钮的开关存在 chrome.storage.local.showFloatingButton，默认开启、可在面板里关掉
 const FLOAT_BUTTON_KEY = "showFloatingButton";
+
+/** 已自动登记过投递记录的 URL（同一页面只报一次，去重由后台再做一层） */
+const jhReportedUrls = new Set();
 
 /**
  * 字段匹配规则来自 field-dictionary.js（别名词典），站点结构识别来自 site-adapters.js。
@@ -54,6 +57,7 @@ function refreshAdapter() {
   if (isTopFrame) {
     showInjectBadge();
     mountFloatingButton();
+    scheduleAutoReport();
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -66,7 +70,10 @@ function refreshAdapter() {
 
       case "FILL_RESUME":
         try {
-          sendResponse(fillResume(msg.payload || {}));
+          const result = fillResume(msg.payload || {});
+          // 填充成功 = 用户确实在投递流程里，顺手登记一次
+          if (result.ok && result.filled.length) reportApplication("fill");
+          sendResponse(result);
         } catch (e) {
           console.error("[求职简历助手] 填充异常：", e);
           sendResponse({ ok: false, reason: "填充过程出错：" + e.message });
@@ -228,6 +235,57 @@ function diagnose() {
     total: items.length,
     items: items.slice(0, 30),
   };
+}
+
+/* ==================== 投递记录登记（阶段 3） ==================== */
+
+/**
+ * 延迟自动登记：SPA 站点（Boss直聘等）注入时 title 可能还没渲染出公司/岗位，
+ * 等 1.5 秒再探测；之后 hash/popstate 路由变化也补一次探测。
+ * 仅对已知招聘站点（JH_JOB_DOMAINS）生效，普通网页不记录，避免噪音和隐私问题。
+ */
+function scheduleAutoReport() {
+  if (typeof jhIsJobSite !== "function" || !jhIsJobSite(location.hostname)) return;
+
+  setTimeout(() => reportApplication("auto"), 1500);
+
+  // SPA 路由切换（Boss/拉勾详情页不刷新页面）
+  window.addEventListener("popstate", () => setTimeout(() => reportApplication("auto"), 800));
+  window.addEventListener("hashchange", () => setTimeout(() => reportApplication("auto"), 800));
+}
+
+/**
+ * 把当前页面的公司/岗位发给后台登记。
+ * 去重双保险：content 侧同 URL 只报一次；background 侧按"公司+岗位+同一天"再去重。
+ */
+function reportApplication(reason) {
+  if (jhReportedUrls.has(location.href)) return;
+  jhReportedUrls.add(location.href);
+
+  let info = { company: "", position: "" };
+  try {
+    info = typeof jhDetectJobPage === "function"
+      ? jhDetectJobPage(document)
+      : info;
+  } catch (e) {
+    console.warn("[求职简历助手] 页面信息探测失败：", e);
+  }
+
+  // 公司岗位都探测不到时也记录（保留 URL，用户可在面板里看到链接自行判断）
+  chrome.runtime.sendMessage(
+    {
+      type: "RECORD_APPLICATION",
+      payload: {
+        company: info.company || "",
+        position: info.position || "",
+        url: location.href,
+        reason,
+      },
+    },
+    () => {
+      void chrome.runtime.lastError; // 后台休眠时忽略
+    }
+  );
 }
 
 /* ==================== 元素采集 ==================== */
