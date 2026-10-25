@@ -490,7 +490,8 @@ body {
     width: 420px;
     max-width: 100%;
     height: auto;
-    overflow: hidden;
+    /* 注意：这里不能用 overflow:hidden —— 它会被传播到视口，导致整个页面滚不动。
+       面板内容都是内缩的（.panel 有左右 padding），不裁也不会溢出圆角。 */
     background: #f5f7fa;
     border: 1px solid #dfe6ee;
     border-radius: 14px;
