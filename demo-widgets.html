@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>自定义下拉控件 · 求职简历助手演示</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: #f0f4f8; color: #22303c; padding: 32px 16px 80px;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .banner {
+      background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px;
+      padding: 10px 14px; font-size: 13px; color: #8a6100; margin-bottom: 18px; line-height: 1.6;
+    }
+    .card { background: #fff; border: 1px solid #e3e9f0; border-radius: 12px; padding: 26px 28px; }
+    h1 { font-size: 19px; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: #8496a6; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+
+    .field { display: flex; flex-direction: column; }
+    .field.full { grid-column: 1 / -1; }
+    .field > label { font-size: 13px; color: #5d6f80; margin-bottom: 6px; }
+
+    /* ===== 原生 select（对照组） ===== */
+    .native {
+      width: 100%; padding: 9px 11px; font-size: 14px; font-family: inherit; color: #22303c;
+      background: #fff; border: 1px solid #dbe3ec; border-radius: 7px; outline: none;
+    }
+
+    /* ===== Ant Design 风格自定义下拉 ===== */
+    .ant-select { position: relative; width: 100%; }
+    .ant-select-selector {
+      display: flex; align-items: center; width: 100%; min-height: 38px; padding: 0 11px;
+      font-size: 14px; color: #22303c; background: #fff; border: 1px solid #dbe3ec;
+      border-radius: 7px; cursor: pointer; transition: border-color .15s;
+    }
+    .ant-select-selector:hover { border-color: #2f9cf4; }
+    .ant-select-open .ant-select-selector { border-color: #2f9cf4; box-shadow: 0 0 0 3px rgba(47,156,244,.13); }
+    .ant-select-selection-placeholder { color: #a9b6c4; }
+    .ant-select-selection-item { color: #22303c; }
+    .ant-select-selection-search-input {
+      width: 100%; border: none; outline: none; font-size: 14px; font-family: inherit;
+      color: #22303c; background: transparent;
+    }
+    .ant-select-arrow { margin-left: auto; color: #a9b6c4; font-size: 11px; }
+    /* 浮层：真实组件会 appendChild 到 body 末尾，这里同样挂在 body 下 */
+    .ant-select-dropdown {
+      position: absolute; z-index: 30; min-width: 220px; padding: 4px;
+      background: #fff; border: 1px solid #e3e9f0; border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(20,40,70,.12); max-height: 220px; overflow-y: auto;
+    }
+    .ant-select-dropdown-hidden { display: none; }
+    .ant-select-item { padding: 8px 10px; font-size: 14px; border-radius: 6px; cursor: pointer; }
+    .ant-select-item:hover, .ant-select-item-option-active { background: #eef7ff; }
+    .ant-select-item-option-selected { background: #e2f0fd; color: #1668b8; font-weight: 600; }
+    .ant-empty { padding: 10px; font-size: 13px; color: #a9b6c4; text-align: center; }
+
+    /* ===== Element 风格级联选择 ===== */
+    .el-cascader { position: relative; }
+    .el-input__inner {
+      width: 100%; padding: 9px 11px; font-size: 14px; font-family: inherit; color: #22303c;
+      background: #fff; border: 1px solid #dbe3ec; border-radius: 7px; outline: none; cursor: pointer;
+    }
+    .el-cascader__dropdown {
+      position: absolute; z-index: 30; display: flex; background: #fff;
+      border: 1px solid #e3e9f0; border-radius: 8px; box-shadow: 0 6px 20px rgba(20,40,70,.12);
+    }
+    .el-cascader-menu { min-width: 140px; padding: 6px 4px; border-right: 1px solid #eef2f6; }
+    .el-cascader-menu:last-child { border-right: none; }
+    .el-cascader-node { padding: 7px 10px; font-size: 14px; border-radius: 6px; cursor: pointer; }
+    .el-cascader-node:hover { background: #eef7ff; }
+    .el-cascader-node.is-active { color: #2f9cf4; font-weight: 600; }
+
+    /* ===== 下拉表格 ===== */
+    .jh-ts-trigger {
+      display: flex; align-items: center; width: 100%; min-height: 38px; padding: 0 11px;
+      font-size: 14px; background: #fff; border: 1px solid #dbe3ec; border-radius: 7px;
+      cursor: pointer; transition: border-color .15s;
+    }
+    .jh-ts-trigger:hover { border-color: #2f9cf4; }
+    .jh-ts-value.is-empty { color: #a9b6c4; }
+    .jh-ts-popup {
+      position: absolute; z-index: 30; min-width: 320px; padding: 8px;
+      background: #fff; border: 1px solid #e3e9f0; border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(20,40,70,.12);
+    }
+    .jh-ts-popup table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .jh-ts-popup th, .jh-ts-popup td { padding: 7px 8px; text-align: left; border-bottom: 1px solid #eef2f6; }
+    .jh-ts-popup th { color: #7b8b9a; font-weight: 500; font-size: 12px; }
+    .jh-ts-popup tbody tr { cursor: pointer; }
+    .jh-ts-popup tbody tr:hover { background: #f4f9ff; }
+    .jh-ts-popup tbody tr.is-picked { background: #e2f0fd; }
+    .jh-ts-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .jh-ts-actions button {
+      padding: 6px 16px; font-size: 13px; font-family: inherit; border-radius: 6px; cursor: pointer;
+      border: 1px solid #dbe3ec; background: #fff; color: #5d6f80;
+    }
+    .jh-ts-actions button.ok { background: #2f9cf4; border-color: #2f9cf4; color: #fff; font-weight: 600; }
+
+    .actions { margin-top: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .actions > button {
+      padding: 10px 22px; font-size: 14px; font-family: inherit; font-weight: 600;
+      color: #fff; background: #2f9cf4; border: none; border-radius: 7px; cursor: pointer;
+    }
+    .actions > button.ghost { background: #fff; color: #2f9cf4; border: 1px solid #2f9cf4; }
+    .msg { font-size: 13px; color: #27ae60; line-height: 1.6; }
+    .msg.error { color: #d64541; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      这是<b>自定义下拉控件</b>演示页：模拟 Ant Design 下拉、Element 级联选择（省 → 市）、下拉表格（职位）。
+      这些控件的选项都不在表单里，而是点击后渲染到 <code>body</code> 末尾的浮层中，用来验证插件的「模拟点击填充」能力。
+    </div>
+
+    <div class="card">
+      <h1>投递信息（复杂控件版）</h1>
+      <p class="sub">含原生下拉、自定义下拉、可搜索下拉、级联选择、下拉表格</p>
+
+      <div class="grid">
+        <div class="field">
+          <label>最高学历</label>
+          <div class="ant-select" id="w-education">
+            <div class="ant-select-selector" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+              <span class="ant-select-selection-placeholder">请选择学历</span>
+              <span class="ant-select-selection-item" style="display:none"></span>
+              <span class="ant-select-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>政治面貌</label>
+          <select class="native" id="w-politics">
+            <option value="">请选择</option>
+            <option value="群众">群众</option>
+            <option value="共青团员">共青团员</option>
+            <option value="中共预备党员">中共预备党员</option>
+            <option value="中共党员">中共党员</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>民族</label>
+          <div class="ant-select" id="w-nation">
+            <div class="ant-select-selector" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+              <input class="ant-select-selection-search-input" type="text" aria-label="民族" />
+              <span class="ant-select-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>期望城市</label>
+          <div class="el-cascader" id="w-city">
+            <div class="el-input">
+              <input class="el-input__inner" type="text" placeholder="请选择省 / 市" readonly />
+            </div>
+          </div>
+        </div>
+
+        <div class="field full">
+          <label>期望职位</label>
+          <div class="jh-table-select" id="w-position" style="position:relative">
+            <div class="jh-ts-trigger" role="combobox" aria-haspopup="dialog" aria-expanded="false">
+              <span class="jh-ts-value is-empty">请选择职位</span>
+              <span class="ant-select-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-fill-custom" type="button">用已保存的简历填充</button>
+        <button id="btn-reset-custom" class="ghost" type="button">重置控件</button>
+        <span class="msg" id="custom-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="field-dictionary.js"></script>
+  <script src="lib/option-match.js"></script>
+  <script src="site-adapters.js"></script>
+  <script src="content.js"></script>
+  <script src="demo-widgets.js"></script>
+</body>
+</html>

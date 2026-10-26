@@ -27,7 +27,8 @@ async function runFill() {
       return;
     }
 
-    const result = fillResume(resume.data);
+    // fillResume 现在是异步的（伪下拉要模拟点击、等浮层渲染），必须 await
+    const result = await fillResume(resume.data);
     const filled = result.filled.length;
     const missed = result.missed.length;
 

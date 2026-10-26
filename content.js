@@ -42,6 +42,50 @@ const FIELD_RULES =
 /** 当前页面命中的站点适配器（惰性计算，页面结构可能异步渲染，每次填充前重算） */
 let jhAdapter = null;
 
+/**
+ * 伪下拉（自定义下拉）相关的选择器。
+ * 这类控件在 DOM 上根本没有 <select>：触发器是个 div/input，选项要点击后
+ * 才渲染成浮层（框架通常 appendChild 到 body 末尾），所以只能「模拟点击」。
+ */
+const JH_CUSTOM_TRIGGER_SEL = [
+  '[role="combobox"]',
+  "[aria-haspopup='listbox']",
+  "[aria-haspopup='dialog']",
+  ".ant-select-selector",
+  ".ant-select-selection-search-input",
+  ".el-select__wrapper",
+  ".el-select .el-input__inner",
+  ".el-cascader .el-input__inner",
+  ".arco-select-view",
+  ".ivu-select-selection",
+].join(",");
+
+/** 浮层（选项容器）选择器：Ant / Element / Arco / iView 以及自研组件的常见命名 */
+const JH_LAYER_SEL = [
+  '[role="listbox"]',
+  ".ant-select-dropdown",
+  ".ant-dropdown",
+  ".el-select-dropdown",
+  ".el-cascader__dropdown",
+  ".el-popper",
+  ".ivu-select-dropdown",
+  ".arco-select-popup",
+  ".arco-trigger-popup",
+  "[class*='cascader-panel']",
+  "[class*='-dropdown']",
+  "[class*='-popup']",
+  "[class*='-popper']",
+].join(",");
+
+/** 浮层里的「一个选项」（普通下拉 / 级联节点 / 列表项） */
+const JH_OPTION_SEL = [
+  '[role="option"]',
+  ".ant-select-item-option",
+  ".el-select-dropdown__item",
+  ".el-cascader-node",
+  "li",
+].join(",");
+
 function refreshAdapter() {
   jhAdapter = typeof jhPickAdapter === "function" ? jhPickAdapter() : null;
   return jhAdapter;
@@ -69,16 +113,19 @@ function refreshAdapter() {
         break;
 
       case "FILL_RESUME":
-        try {
-          const result = fillResume(msg.payload || {});
-          // 填充成功 = 用户确实在投递流程里，顺手登记一次
-          if (result.ok && result.filled.length) reportApplication("fill");
-          sendResponse(result);
-        } catch (e) {
-          console.error("[求职简历助手] 填充异常：", e);
-          sendResponse({ ok: false, reason: "填充过程出错：" + e.message });
-        }
-        break;
+        // 伪下拉要「点击 → 等浮层 → 点选项」，整个填充变成了异步流程，
+        // 必须 return true 保持消息通道，否则 popup 会先收到 undefined。
+        fillResume(msg.payload || {})
+          .then((result) => {
+            // 填充成功 = 用户确实在投递流程里，顺手登记一次
+            if (result.ok && result.filled.length) reportApplication("fill");
+            sendResponse(result);
+          })
+          .catch((e) => {
+            console.error("[求职简历助手] 填充异常：", e);
+            sendResponse({ ok: false, reason: "填充过程出错：" + e.message });
+          });
+        return true;
 
       case "DIAGNOSE":
         sendResponse(diagnose());
@@ -98,8 +145,9 @@ function refreshAdapter() {
  * @param {Object} payload 简历字段对象，key 见 FIELD_RULES
  * @returns {{ok:boolean, filled:Array, missed:Array, scan:Object}}
  */
-function fillResume(payload) {
+async function fillResume(payload) {
   const filled = [];
+  const filledCustom = [];
   const missed = [];
   const doneFields = new Set();
 
@@ -108,6 +156,7 @@ function fillResume(payload) {
   const textBoxes = collectTextBoxes();
   const editables = collectEditables();
   const selects = collectSelects();
+  const customTriggers = collectCustomTriggers();
   const radios = collectRadios();
 
   // 1. 单行 / 多行文本框
@@ -163,14 +212,42 @@ function fillResume(payload) {
     }
   }
 
-  // 4. 统计未匹配的字段（有值但页面上没找到对应控件）
+  // 4. 自定义下拉 / 级联 / 下拉表格（必须模拟点击，逐个来，带总时长预算）
+  if (typeof JH_OPTION !== "undefined" && customTriggers.length) {
+    const budgetEnd = Date.now() + 4000;
+    for (const trigger of customTriggers) {
+      if (Date.now() > budgetEnd) break;
+
+      const box = customTriggerBox(trigger);
+      const field = detectField(box, payload) || detectField(trigger, payload);
+      if (!field || doneFields.has(field)) continue;
+
+      const value = String(payload[field] || "").trim();
+      if (!value) continue;
+
+      try {
+        const kind = await fillCustomSelect(trigger, value);
+        if (kind) {
+          filled.push({ field, value });
+          filledCustom.push({ field, value, kind });
+          doneFields.add(field);
+          highlight(box);
+        }
+      } catch (e) {
+        // 单个控件失败不影响其他字段
+        console.warn("[求职简历助手] 自定义下拉填充失败：", field, e);
+      }
+    }
+  }
+
+  // 5. 统计未匹配的字段（有值但页面上没找到对应控件）
   Object.keys(payload).forEach((field) => {
     if (payload[field] && !doneFields.has(field) && FIELD_RULES[field]) {
       missed.push(field);
     }
   });
 
-  // 5. 诊断信息：即使没填上，也能看出页面上到底有什么控件
+  // 6. 诊断信息：即使没填上，也能看出页面上到底有什么控件
   const scan = {
     host: location.hostname,
     frame: window.top === window.self ? "top" : "iframe",
@@ -178,6 +255,7 @@ function fillResume(payload) {
       text: textBoxes.length,
       editable: editables.length,
       select: selects.length,
+      custom: customTriggers.length,
       radio: radios.length,
     },
     samples: textBoxes
@@ -185,8 +263,8 @@ function fillResume(payload) {
       .map((el) => getTextContext(el).slice(0, 18) || "(无文案)"),
   };
 
-  console.log("[求职简历助手] 填充完成:", { filled, missed, scan });
-  return { ok: true, filled, missed, scan };
+  console.log("[求职简历助手] 填充完成:", { filled, filledCustom, missed, scan });
+  return { ok: true, filled, filledCustom, missed, scan };
 }
 
 /* ==================== 页面结构诊断 ==================== */
@@ -220,6 +298,16 @@ function diagnose() {
       kind: "select",
       ctx: getTextContext(el).slice(0, 40),
       attr: `${el.getAttribute("name") || ""}${el.id ? "#" + el.id : ""}`,
+    });
+  });
+
+  // 自定义下拉：单独列出来，方便判断「是没识别到控件，还是识别到了但选不中」
+  collectCustomTriggers().forEach((el) => {
+    const box = customTriggerBox(el);
+    items.push({
+      kind: "自定义下拉",
+      ctx: getTextContext(box).slice(0, 40),
+      attr: String(box.className || "").slice(0, 24),
     });
   });
 
@@ -297,6 +385,8 @@ function collectTextBoxes() {
       if (!["text", "tel", "email", "number", "search", "url"].includes(type)) return false;
     }
     if (el.disabled || el.readOnly) return false;
+    // 伪下拉内部的搜索框不算文本框：填进去只是「输入」，不会被组件当成选中值
+    if (el.closest(JH_CUSTOM_TRIGGER_SEL)) return false;
     return isVisible(el);
   });
 }
@@ -409,24 +499,32 @@ function getTextContext(el) {
   const label = el.closest("label");
   if (label) parts.push(label.innerText);
 
-  // 向上最多 2 层，取足够短的容器文本（<div><span>姓名</span><input></div>）
-  let node = el.parentElement;
-  let depth = 0;
-  while (node && depth < 2) {
-    const text = (node.innerText || "").trim();
-    if (text && text.length <= 30) {
-      parts.push(text);
-      break;
+  // 伪下拉：触发器自己没文案，label 通常在「控件容器」的前一个兄弟或容器内部的 label 上
+  const box = customTriggerBox(el);
+  if (box && box !== el) {
+    const prevSibling = box.previousElementSibling;
+    if (prevSibling) {
+      const prevText = (prevSibling.innerText || "").trim();
+      if (prevText && prevText.length <= 20) parts.push(prevText);
     }
-    node = node.parentElement;
-    depth++;
+    const innerLabel = box.querySelector("label");
+    if (innerLabel && innerLabel.innerText) parts.push(innerLabel.innerText);
   }
 
-  // 前置兄弟节点里的文字（表单行常见结构）
-  const prev = el.previousElementSibling;
-  if (prev) {
-    const text = (prev.innerText || "").trim();
-    if (text && text.length <= 20) parts.push(text);
+  // 向上最多 3 层：既取容器自身的短文案，也看每层的「前一个兄弟」——
+  // 表单常写成 <label>期望职位</label><div class="…select">…</div>，
+  // 这样伪下拉（自身没文案）也能被正确识别
+  let node = el.parentElement;
+  for (let depth = 0; node && depth < 3; depth++) {
+    const text = (node.innerText || "").trim();
+    if (text && text.length <= 30) parts.push(text);
+
+    const prev = node.previousElementSibling;
+    if (prev) {
+      const prevText = (prev.innerText || "").trim();
+      if (prevText && prevText.length <= 20) parts.push(prevText);
+    }
+    node = node.parentElement;
   }
 
   return parts.filter(Boolean).join(" ").toLowerCase();
@@ -516,6 +614,169 @@ function clickRadioByText(radios, value) {
   return true;
 }
 
+/* ==================== 自定义下拉（伪下拉）填充 ==================== */
+
+/** 伪下拉的「控件容器」：label 通常在这个容器的前一个兄弟或容器内部 */
+function customTriggerBox(el) {
+  return (
+    el.closest(
+      ".ant-select, .el-select, .el-cascader, .arco-select, .ivu-select, .ant-form-item, [class*='form-item'], [class*='formItem']"
+    ) || el
+  );
+}
+
+/** 页面上所有「可能是伪下拉触发器」的元素，去掉被别的触发器包住的嵌套层 */
+function collectCustomTriggers() {
+  const raw = Array.from(document.querySelectorAll(JH_CUSTOM_TRIGGER_SEL)).filter(
+    (el) => isVisible(el) && !el.disabled
+  );
+  return raw.filter((el) => !raw.some((other) => other !== el && other.contains(el)));
+}
+
+/** 当前可见的浮层（选项容器）：display:none 的、空的都不算 */
+function visibleLayers() {
+  return Array.from(document.querySelectorAll(JH_LAYER_SEL)).filter(
+    (el) => isVisible(el) && (el.innerText || "").trim().length > 0
+  );
+}
+
+function jhSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 模拟真实鼠标点击：很多组件只认完整的 mousedown → mouseup → click 序列 */
+function simulateClick(el) {
+  const rect = el.getBoundingClientRect();
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: Math.round(rect.left + rect.width / 2),
+    clientY: Math.round(rect.top + rect.height / 2),
+  };
+  el.dispatchEvent(new MouseEvent("mousedown", init));
+  el.dispatchEvent(new MouseEvent("mouseup", init));
+  el.dispatchEvent(new MouseEvent("click", init));
+}
+
+/** 往伪下拉的搜索框里打字（只派发 input，不派发 blur，否则浮层会被关掉） */
+function typeIntoTrigger(el, text) {
+  const input = el.tagName === "INPUT" ? el : el.querySelector("input");
+  if (!input) return false;
+
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  if (descriptor && descriptor.set) descriptor.set.call(input, text);
+  else input.value = text;
+
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}
+
+/**
+ * 在浮层里按值找到并点中目标项，支持三种形态：
+ *   普通选项 / 级联选择（逐级点）/ 下拉表格（点行 + 点确定）
+ * @returns {Promise<string|null>} 命中的形态，用于在结果里区分来源
+ */
+async function pickInLayer(getLayer, value) {
+  if (typeof JH_OPTION === "undefined") return null;
+
+  let layer = getLayer();
+  if (!layer) return null;
+
+  // ① 下拉表格：选项是 <tbody> 里的一行，可能还要再点一次「确定」
+  const rows = Array.from(layer.querySelectorAll("tbody tr")).filter(isVisible);
+  if (rows.length) {
+    const rowTexts = rows.map((row) =>
+      Array.from(row.cells || [])
+        .map((c) => (c.innerText || "").trim())
+        .join("|")
+    );
+    const idx = JH_OPTION.jhPickRow(rowTexts, value);
+    if (idx >= 0) {
+      const row = rows[idx];
+      const control = row.querySelector('input[type="radio"], input[type="checkbox"]');
+      simulateClick(control || row);
+      await jhSleep(60);
+      const confirmBtn = Array.from(layer.querySelectorAll("button")).find((b) =>
+        /^(确定|确认|完成|ok)$/i.test((b.innerText || "").trim())
+      );
+      if (confirmBtn) simulateClick(confirmBtn);
+      return "row";
+    }
+  }
+
+  // ② 级联选择：值像「辽宁省 / 大连市」时逐级点下去
+  const segments = JH_OPTION.jhSplitCascade(value);
+  if (segments.length > 1) {
+    for (const segment of segments) {
+      layer = getLayer() || layer;
+      const nodes = Array.from(layer.querySelectorAll(JH_OPTION_SEL)).filter(isVisible);
+      const idx = JH_OPTION.jhPickOption(
+        nodes.map((n) => (n.innerText || "").trim()),
+        segment
+      );
+      if (idx < 0) return null;
+      simulateClick(nodes[idx]);
+      await jhSleep(160); // 等下一级面板渲染
+    }
+    return "cascade";
+  }
+
+  // ③ 普通选项
+  const options = Array.from(layer.querySelectorAll(JH_OPTION_SEL)).filter(isVisible);
+  const idx = JH_OPTION.jhPickOption(
+    options.map((o) => (o.innerText || "").trim()),
+    value
+  );
+  if (idx < 0) return null;
+  simulateClick(options[idx]);
+  return "option";
+}
+
+/**
+ * 填充一个伪下拉：点开 → 等浮层 → 选值 → 选不到就打字过滤再选一次。
+ * 全程有超时保护，失败返回 null，不会卡住其他字段。
+ */
+async function fillCustomSelect(trigger, value) {
+  if (typeof JH_OPTION === "undefined") return null;
+
+  const before = new Set(visibleLayers());
+  const getLayer = () => {
+    const now = visibleLayers();
+    const fresh = now.filter((el) => !before.has(el));
+    if (fresh.length) return fresh[fresh.length - 1];
+    return now.length ? now[now.length - 1] : null;
+  };
+
+  simulateClick(trigger);
+
+  // 等浮层出现：框架渲染是异步的，轮询 12 次 × 50ms
+  let layer = null;
+  for (let i = 0; i < 12 && !layer; i++) {
+    await jhSleep(50);
+    layer = getLayer();
+  }
+  if (!layer) return null;
+
+  let hit = await pickInLayer(() => getLayer() || layer, value);
+
+  // 可搜索下拉：直接选不到就把值打进搜索框，让组件自己过滤后再选
+  if (!hit && typeIntoTrigger(trigger, value)) {
+    await jhSleep(220);
+    layer = getLayer() || layer;
+    hit = await pickInLayer(() => getLayer() || layer, value);
+  }
+
+  if (!hit) {
+    // 没选中就点一下空白处收起浮层，避免挡住后续字段
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    return null;
+  }
+
+  await jhSleep(80);
+  return hit;
+}
+
 /** 填充后给控件一个短暂的绿色描边，方便肉眼确认哪些被填了 */
 function highlight(el) {
   const original = el.style.boxShadow;
@@ -540,37 +801,40 @@ function mountFloatingButton() {
   const btn = document.createElement("button");
   btn.id = "__job_helper_btn__";
   btn.type = "button";
-  btn.textContent = "简";
+  btn.textContent = "fill";
   btn.title = "打开求职简历助手";
   btn.style.cssText = `
     position: fixed !important;
     right: 18px !important;
     bottom: 110px !important;
-    width: 44px !important;
-    height: 44px !important;
+    width: 46px !important;
+    height: 46px !important;
     padding: 0 !important;
     border: none !important;
     border-radius: 50% !important;
-    background: #27ae60 !important;
+    background: #e74c3c !important;
     color: #ffffff !important;
-    font: 600 16px/1 "Microsoft YaHei", "PingFang SC", sans-serif !important;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
+    font: 700 15px/1 "Microsoft YaHei", "PingFang SC", sans-serif !important;
+    letter-spacing: 0 !important;
+    box-shadow: 0 4px 14px rgba(192, 57, 43, 0.32) !important;
     cursor: pointer !important;
     z-index: 2147483646 !important;
     display: none !important;
     align-items: center !important;
     justify-content: center !important;
-    opacity: 0.9 !important;
-    transition: opacity 0.2s, transform 0.2s !important;
+    opacity: 0.92 !important;
+    transition: opacity 0.2s, transform 0.2s, background 0.2s !important;
   `;
 
   btn.addEventListener("mouseenter", () => {
     btn.style.setProperty("opacity", "1", "important");
     btn.style.setProperty("transform", "scale(1.06)", "important");
+    btn.style.setProperty("background", "#d63b2f", "important");
   });
   btn.addEventListener("mouseleave", () => {
-    btn.style.setProperty("opacity", "0.9", "important");
+    btn.style.setProperty("opacity", "0.92", "important");
     btn.style.setProperty("transform", "scale(1)", "important");
+    btn.style.setProperty("background", "#e74c3c", "important");
   });
 
   btn.addEventListener("click", (e) => {
