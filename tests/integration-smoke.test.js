@@ -358,8 +358,13 @@ async function test(name, fn) {
     // 不确定的字段应保持为空，不能瞎填
     assert.strictEqual(preset.data.gender, "", "性别应为空");
     assert.strictEqual(preset.data.birth, "", "出生日期应为空");
-    assert.strictEqual(preset.data.projectExp, "", "项目经历应为空");
     assert.strictEqual(preset.data.idCard, "", "证件号码应为空");
+    // 项目经历里放的是本插件自身的毕设项目，需带项目名与仓库地址
+    assert.ok(preset.data.projectExp.includes("JobFill"), "项目经历应含项目名");
+    assert.ok(
+      preset.data.projectExp.includes("github.com/Hcir782/job-helper-extension"),
+      "项目经历应含 GitHub 地址"
+    );
 
     // 表单已回填、激活版本已切换
     assert.strictEqual(env.elements["resume-form"].elements.name.value, "王瑞瑶");

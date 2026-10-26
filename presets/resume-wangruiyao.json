@@ -1,6 +1,6 @@
 {
   "name": "王瑞瑶-运维版",
-  "note": "字段集合 = Moka（华勤）与快手校招申请表字段并集去重。只填已确认的信息，民族/性别/证件号/实习项目等未提供的字段一律留空，导入后请补全。",
+  "note": "字段集合 = Moka（华勤）与快手校招申请表字段并集去重。只填已确认的信息：民族/性别/证件号/实习经历等未提供的字段一律留空，导入后请补全；项目经历填写的是本插件自身（简填 JobFill）。",
   "source": "华勤技术（app.mokahr.com）+ 快手校招（campus.kuaishou.cn）申请表字段并集",
   "exportedAt": "2026-10-25",
   "data": {
@@ -39,7 +39,7 @@
     "referrerCode": "",
 
     "internshipExp": "",
-    "projectExp": "",
+    "projectExp": "项目名称：简填 JobFill（求职简历助手）｜独立开发｜2026.10-至今\n一句话：纯本地的 Chrome/Edge 扩展（Manifest V3），把一份简历一键填进不同招聘系统的网申表单，并管理简历版本与投递台账。\n· 字段识别：44 字段别名词典作单一数据源，结合 label / placeholder / aria-label / 邻近文案，叠加 5 个招聘站点与 Ant Design、Element、Arco 组件库适配器打分匹配；英文关键词做边界匹配，避免 companyName 被误认成「姓名」。\n· 框架适配：直接赋值会被 React/Vue 内部状态覆盖，改为调用原型链原生 value setter 并派发 input/change/blur；contenteditable 用 execCommand('insertText') 写入。\n· 伪下拉：Ant/Element/自研下拉的选项点击后才渲染到 body，模拟 mousedown→mouseup→click 完整手势并轮询等浮层出现，支持普通下拉 / 可搜索下拉 / 省级联 / 下拉表格四种形态；匹配算法抽成纯函数库，遇到歧义宁可不填。\n· 数据与工程：chrome.storage.local 本地存储、多简历版本管理、投递记录按「公司+岗位+自然日」去重、CSV 导出（BOM + RFC4180）；Node 沙箱 + mock chrome/DOM 跑 73 条自动断言，含 11 条真实浏览器端到端测试。\nGitHub：https://github.com/Hcir782/job-helper-extension",
     "campusExp": "",
     "awards": "",
     "certificates": "红帽 RHCSA、RHCE；CET-4",
