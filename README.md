@@ -4,6 +4,8 @@
 
 > 技术栈：Chrome Extension Manifest V3 · 原生 HTML/CSS/JS · chrome.storage.local
 
+**下载即用**：[最新版本 v0.9.0](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
+
 | 插件面板（44 字段 / 版本管理 / 投递记录） | 一键填充真实表单 |
 | --- | --- |
 | ![插件面板](docs/screenshot-panel.png) | ![一键填充演示](docs/screenshot-fill.gif) |
@@ -53,7 +55,8 @@
 
 | 方式 | 操作 | 适合 |
 | --- | --- | --- |
-| 下载 ZIP（推荐给第一次用的人） | 仓库页右上角 **Code → Download ZIP**，解压到任意目录（如 `D:\job-helper-extension`） | 只用插件、不改代码 |
+| **下载 Release 包（最省事）** | 打开 [最新版本](https://github.com/Hcir782/job-helper-extension/releases/latest)，下载 `job-helper-extension-vX.Y.Z.zip` 并解压 | 只想用插件，不关心 git |
+| 下载 ZIP（源码） | 仓库页右上角 **Code → Download ZIP**，解压到任意目录 | 只用插件、不改代码 |
 | git clone | `git clone https://github.com/Hcir782/job-helper-extension.git` | 想跟进后续更新、改代码 |
 
 > ⚠️ 解压后文件夹名可能是 `job-helper-extension-main`，这没关系，**只要这一层里有 `manifest.json` 就对**。
