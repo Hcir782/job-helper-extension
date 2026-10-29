@@ -18,10 +18,12 @@ const PANEL_PATH = "popup.html";
 const PANEL_TAB_KEY = "panelTabId";
 const JOB_TAB_KEY = "lastJobTabId";
 
-/** 注入顺序不能变：词典 / 选项匹配 / 适配器要先于 content.js 加载 */
+/** 注入顺序不能变：词典 / 选项匹配 / 日期归一化 / 适配器要先于 content.js 加载 */
 const CONTENT_FILES = [
   "field-dictionary.js",
   "lib/option-match.js",
+  "lib/date-value.js",
+  "lib/date-group.js",
   "site-adapters.js",
   "content.js",
 ];

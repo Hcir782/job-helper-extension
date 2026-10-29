@@ -492,6 +492,15 @@ function sendMsg(message) {
   });
 }
 
+/** 把字段 key 翻译成面板上显示的中文标签（取不到就退回 key 本身） */
+function fieldLabel(name) {
+  if (!name) return "";
+  const el = document.querySelector(`#resume-form [name="${name}"]`);
+  const box = el ? el.closest(".field") : null;
+  const lab = box ? box.querySelector(".field-label") : null;
+  return (lab && lab.textContent.trim()) || String(name);
+}
+
 function escapeHtml(text) {
   return String(text == null ? "" : text)
     .replace(/&/g, "&amp;")
@@ -635,12 +644,24 @@ async function fillCurrentPage() {
 
     const filled = resp.filled?.length || 0;
     const missed = resp.missed?.length || 0;
+    const customMissed = resp.customMissed || [];
     if (filled === 0) {
       setTip(describeFailure(resp.scan), "error");
     } else {
       const injectedTip = resp.injected ? "（已按需注入脚本）" : "";
+      // 被识别出来但没选中的下拉单独说清楚：这跟「页面上没这个字段」是两回事
+      const noOption = customMissed.filter((x) => x.field && x.reason !== "budget");
+      const budgetHit = customMissed.some((x) => x.reason === "budget");
+      const customTip = noOption.length
+        ? `；其中 ${noOption.length} 个下拉没选上：${noOption
+            .slice(0, 4)
+            .map((x) => fieldLabel(x.field))
+            .join("、")}${noOption.length > 4 ? "…" : ""}，请手动点一下`
+        : "";
+      // 控件太多、时间预算用尽：提示再点一次即可（第二次会跳过已填字段，更快）
+      const budgetTip = budgetHit ? "；页面下拉较多没处理完，再点一次「填充」即可继续" : "";
       setTip(
-        `已填充 ${filled} 个字段${missed ? `，${missed} 个未匹配` : ""}${injectedTip}。`,
+        `已填充 ${filled} 个字段${missed ? `，${missed} 个未匹配` : ""}${customTip}${budgetTip}${injectedTip}。`,
         "ok"
       );
     }

@@ -86,6 +86,16 @@ const JH_OPTION_SEL = [
   "li",
 ].join(",");
 
+/**
+ * 自定义下拉的时间预算（v0.10.0 调整）。
+ * 旧版所有自定义控件共用一个 4 秒总预算，每个控件最坏要 600ms（等浮层）
+ * + 220ms（打字过滤）+ 600ms（再等）≈ 1.4s —— 页面上有 4 个以上下拉时，
+ * 后面的控件会被直接跳过，看起来就是「有些下拉填不上」。
+ * 现在改成：单控件 1.8 秒、总计 12 秒，且每个控件的失败原因会回传给面板。
+ */
+const JH_CUSTOM_PER_MS = 1800;
+const JH_CUSTOM_BUDGET_MS = 12000;
+
 function refreshAdapter() {
   jhAdapter = typeof jhPickAdapter === "function" ? jhPickAdapter() : null;
   return jhAdapter;
@@ -148,6 +158,7 @@ function refreshAdapter() {
 async function fillResume(payload) {
   const filled = [];
   const filledCustom = [];
+  const customMissed = [];
   const missed = [];
   const doneFields = new Set();
 
@@ -159,13 +170,16 @@ async function fillResume(payload) {
   const customTriggers = collectCustomTriggers();
   const radios = collectRadios();
 
-  // 1. 单行 / 多行文本框
+  // 1. 单行 / 多行文本框（含 date / month 等日期类控件）
   textBoxes.forEach((el) => {
     const field = detectField(el, payload);
     if (!field || doneFields.has(field)) return;
 
-    const value = String(payload[field] || "").trim();
-    if (!value) return;
+    const raw = String(payload[field] || "").trim();
+    if (!raw) return;
+
+    const value = normalizeForInput(el, raw);
+    if (!value) return; // 日期控件拿不到合法格式，跳过而不是写空
 
     if (setNativeValue(el, value)) {
       filled.push({ field, value });
@@ -212,11 +226,18 @@ async function fillResume(payload) {
     }
   }
 
+  // 3.5 年月分离的两个控件（出生年月 / 入学时间常被拆成「年」「月」两个下拉）
+  await fillYearMonthPairs(payload, doneFields, filled, customMissed);
+
   // 4. 自定义下拉 / 级联 / 下拉表格（必须模拟点击，逐个来，带总时长预算）
   if (typeof JH_OPTION !== "undefined" && customTriggers.length) {
-    const budgetEnd = Date.now() + 4000;
+    const budgetEnd = Date.now() + JH_CUSTOM_BUDGET_MS;
     for (const trigger of customTriggers) {
-      if (Date.now() > budgetEnd) break;
+      if (Date.now() > budgetEnd) {
+        // 预算耗尽：明确记账，别让用户以为这些字段「页面上没有」
+        customMissed.push({ field: "", reason: "budget" });
+        break;
+      }
 
       const box = customTriggerBox(trigger);
       const field = detectField(box, payload) || detectField(trigger, payload);
@@ -232,10 +253,14 @@ async function fillResume(payload) {
           filledCustom.push({ field, value, kind });
           doneFields.add(field);
           highlight(box);
+        } else {
+          // 认出了控件但没选中：多半是选项文案对不上，单独记账便于用户手填
+          customMissed.push({ field, reason: "no-option" });
         }
       } catch (e) {
         // 单个控件失败不影响其他字段
         console.warn("[求职简历助手] 自定义下拉填充失败：", field, e);
+        customMissed.push({ field, reason: "error" });
       }
     }
   }
@@ -263,8 +288,8 @@ async function fillResume(payload) {
       .map((el) => getTextContext(el).slice(0, 18) || "(无文案)"),
   };
 
-  console.log("[求职简历助手] 填充完成:", { filled, filledCustom, missed, scan });
-  return { ok: true, filled, filledCustom, missed, scan };
+  console.log("[求职简历助手] 填充完成:", { filled, filledCustom, customMissed, missed, scan });
+  return { ok: true, filled, filledCustom, customMissed, missed, scan };
 }
 
 /* ==================== 页面结构诊断 ==================== */
@@ -382,13 +407,33 @@ function collectTextBoxes() {
   return Array.from(document.querySelectorAll("input, textarea")).filter((el) => {
     if (el.tagName === "INPUT") {
       const type = (el.type || "text").toLowerCase();
-      if (!["text", "tel", "email", "number", "search", "url"].includes(type)) return false;
+      // v0.10.0：把日期类控件也纳入收集范围（此前被整体排除，导致日期框永远填不上）
+      if (
+        !["text", "tel", "email", "number", "search", "url", "date", "month", "time", "datetime-local"].includes(
+          type
+        )
+      )
+        return false;
     }
     if (el.disabled || el.readOnly) return false;
     // 伪下拉内部的搜索框不算文本框：填进去只是「输入」，不会被组件当成选中值
     if (el.closest(JH_CUSTOM_TRIGGER_SEL)) return false;
     return isVisible(el);
   });
+}
+
+/**
+ * 按控件类型把简历里的值转成浏览器能接受的形式。
+ * 日期类控件只认 fixed 格式（date → YYYY-MM-DD、month → YYYY-MM），
+ * 直接写「2027年6月」会被浏览器当成非法值丢弃，且不报错——静默失败最难查。
+ * @returns {string} 可直接赋值的字符串；无法转换时返回 ""（调用方应跳过）
+ */
+function normalizeForInput(el, rawValue) {
+  const type = (el.tagName === "INPUT" ? el.type || "text" : "").toLowerCase();
+  if (typeof JH_DATE !== "undefined" && JH_DATE.jhIsDateInputType(type)) {
+    return JH_DATE.jhNormalizeDateInput(rawValue, type);
+  }
+  return rawValue;
 }
 
 function collectSelects() {
@@ -424,9 +469,17 @@ function isVisible(el) {
  * 只在 payload 中"有值"的字段里匹配，避免把无内容字段错误抢占。
  */
 function detectField(el, payload) {
-  const rawCtx = getTextContext(el);
-  // 中文站点的 label 常带空格（"姓　名"），去掉所有空白后再匹配
-  const flatCtx = rawCtx.replace(/\s+/g, "");
+  const parts = getTextContextParts(el);
+  // 中文站点的 label 常带空格（"姓　名"），去掉所有空白后再匹配；
+  // 每段保留自己的权重 —— 离控件越近的文案越说了算
+  const flatParts = parts.map((p) => ({
+    text: p.text.replace(/\s+/g, "").toLowerCase(),
+    weight: p.weight,
+  }));
+  const rawCtx = parts
+    .map((p) => p.text)
+    .join(" ")
+    .toLowerCase();
   const attrCtx = `${el.getAttribute("name") || ""} ${el.getAttribute("id") || ""}`;
 
   let best = null;
@@ -445,8 +498,13 @@ function detectField(el, payload) {
         const boundary = new RegExp(`(^|[\\s_\\-\\[.])${lowerKw}($|[\\s_\\-\\]_.])`, "i");
         if (boundary.test(attrCtx)) score = Math.max(score, kw.length * 2);
       } else {
-        // 中文关键词在"去空白"文案里匹配，避免被 class 名干扰
-        if (flatCtx.includes(lowerKw)) score = kw.length;
+        // 中文关键词：取「包含它的片段里权重最高的一段」来打分，
+        // 这样第 3 层祖先的前一个兄弟（往往是别的字段的 label）压不过控件自己的 label
+        let weight = 0;
+        flatParts.forEach((p) => {
+          if (p.text.includes(lowerKw) && p.weight > weight) weight = p.weight;
+        });
+        if (weight) score = kw.length * weight;
       }
 
       if (score > bestScore) {
@@ -459,13 +517,30 @@ function detectField(el, payload) {
   return best;
 }
 
-/** 提取控件周边的可见文案：placeholder、label、aria-label、祖先短文本、前置兄弟节点 */
-function getTextContext(el) {
-  const parts = [
-    el.getAttribute("placeholder"),
-    el.getAttribute("aria-label"),
-    el.getAttribute("title"),
-  ];
+/**
+ * 提取控件周边的可见文案，**带可信度权重**。
+ *
+ * 为什么需要权重：旧版把所有文案平铺成一个字符串，再按「关键词长度」打分。
+ * 于是「外语水平」那个伪下拉会把上一行「期望职位」的文案也吸进来，
+ * 两个关键词都是 4 个字 → 打平 → 按字段字典顺序先到先得 → 认成了期望职位。
+ *
+ * 权重约定（离控件越近越可信）：
+ *   3    控件自身属性（placeholder / aria-label / title）与真正挂着它的 label
+ *   2~1  向上第 1~3 层容器的短文案
+ *   1.5~0.5 各层的「前一个兄弟」——表单常写成 <label>X</label><div class=select>，
+ *        但越往上，「前一个兄弟」越可能是别的字段，所以要衰减
+ */
+function getTextContextParts(el) {
+  const parts = [];
+  const add = (text, weight) => {
+    const t = String(text == null ? "" : text).trim();
+    if (t) parts.push({ text: t, weight });
+  };
+
+  // 控件自身属性：最可信，就是给它写的名字
+  add(el.getAttribute("placeholder"), 3);
+  add(el.getAttribute("aria-label"), 3);
+  add(el.getAttribute("title"), 3);
 
   // 优先用站点/组件库适配器定位字段文案
   if (jhAdapter) {
@@ -474,10 +549,10 @@ function getTextContext(el) {
       if (container) {
         const labelEl = container.querySelector(jhAdapter.labelSelector);
         if (labelEl && labelEl.innerText) {
-          parts.push(labelEl.innerText);
+          add(labelEl.innerText, 3);
         } else {
           const text = (container.innerText || "").trim();
-          if (text && text.length <= 40) parts.push(text);
+          if (text && text.length <= 40) add(text, 2);
         }
       }
     } catch (e) {
@@ -489,7 +564,7 @@ function getTextContext(el) {
   if (el.id) {
     try {
       const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (forLabel) parts.push(forLabel.innerText);
+      if (forLabel) add(forLabel.innerText, 3);
     } catch (e) {
       // CSS.escape 不可用时忽略
     }
@@ -497,7 +572,7 @@ function getTextContext(el) {
 
   // 包裹型 <label><span>姓名</span><input></label>
   const label = el.closest("label");
-  if (label) parts.push(label.innerText);
+  if (label) add(label.innerText, 3);
 
   // 伪下拉：触发器自己没文案，label 通常在「控件容器」的前一个兄弟或容器内部的 label 上
   const box = customTriggerBox(el);
@@ -505,29 +580,37 @@ function getTextContext(el) {
     const prevSibling = box.previousElementSibling;
     if (prevSibling) {
       const prevText = (prevSibling.innerText || "").trim();
-      if (prevText && prevText.length <= 20) parts.push(prevText);
+      if (prevText && prevText.length <= 20) add(prevText, 3);
     }
     const innerLabel = box.querySelector("label");
-    if (innerLabel && innerLabel.innerText) parts.push(innerLabel.innerText);
+    if (innerLabel && innerLabel.innerText) add(innerLabel.innerText, 3);
   }
 
   // 向上最多 3 层：既取容器自身的短文案，也看每层的「前一个兄弟」——
   // 表单常写成 <label>期望职位</label><div class="…select">…</div>，
-  // 这样伪下拉（自身没文案）也能被正确识别
+  // 这样伪下拉（自身没文案）也能被正确识别。越往上权重越低。
   let node = el.parentElement;
   for (let depth = 0; node && depth < 3; depth++) {
     const text = (node.innerText || "").trim();
-    if (text && text.length <= 30) parts.push(text);
+    if (text && text.length <= 30) add(text, 2 - depth * 0.5);
 
     const prev = node.previousElementSibling;
     if (prev) {
       const prevText = (prev.innerText || "").trim();
-      if (prevText && prevText.length <= 20) parts.push(prevText);
+      if (prevText && prevText.length <= 20) add(prevText, 1.5 - depth * 0.5);
     }
     node = node.parentElement;
   }
 
-  return parts.filter(Boolean).join(" ").toLowerCase();
+  return parts;
+}
+
+/** 兼容旧调用：把带权重的片段拼成一个小写字符串（诊断面板在用） */
+function getTextContext(el) {
+  return getTextContextParts(el)
+    .map((p) => p.text)
+    .join(" ")
+    .toLowerCase();
 }
 
 /* ==================== 赋值与事件 ==================== */
@@ -612,6 +695,137 @@ function clickRadioByText(radios, value) {
   if (!target) return false;
   target.click();
   return true;
+}
+
+/* ==================== 年月分离控件 ==================== */
+
+/** 找「共同容器」时最多往上走几层，避免一路走到 <body> 把所有控件归成一组 */
+const JH_YM_GROUP_DEPTH = 4;
+
+/** 控件自身文案：优先 aria-label / title，其次 select 当前项，最后伪下拉的占位文案 */
+function selfLabel(el) {
+  const aria = (el.getAttribute("aria-label") || el.getAttribute("title") || "").trim();
+  if (aria) return aria;
+
+  if (el.tagName === "SELECT") {
+    const opt = el.options[el.selectedIndex] || el.options[0];
+    return opt ? (opt.textContent || "").trim() : "";
+  }
+
+  const holder = el.querySelector('[class*="placeholder"]');
+  const text = (holder ? holder.textContent : el.textContent) || "";
+  return text.trim().slice(0, 12);
+}
+
+/**
+ * 收集可能是「年」「月」的控件（原生 select 与伪下拉），保持文档顺序。
+ * 返回的 descs 直接喂给 lib/date-group.js 的 jhPairYearMonth。
+ */
+function collectYearMonthControls() {
+  const all = Array.from(document.querySelectorAll("select, " + JH_CUSTOM_TRIGGER_SEL)).filter(
+    (el) => !el.disabled && isVisible(el)
+  );
+  // 伪下拉常「外层 div + 内层 input」同时命中，只留最外层，免得同一个控件算两次
+  const nodes = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+
+  const containerKeys = new Map();
+  const containerKey = (container) => {
+    if (!containerKeys.has(container)) containerKeys.set(container, "g" + containerKeys.size);
+    return containerKeys.get(container);
+  };
+
+  // 一组年月的共同容器 = 从控件往上、第一个「还包含别的候选控件」的祖先。
+  // 两个控件是兄弟节点、或者各包一层 .form-item，都能归到同一组；
+  // 而孤立控件所在容器里没有别的控件，组号唯一，绝不会和远处控件配对。
+  const groupOf = (el) => {
+    let node = el.parentElement;
+    for (let depth = 0; node && depth < JH_YM_GROUP_DEPTH; depth++, node = node.parentElement) {
+      if (nodes.some((o) => o !== el && node.contains(o))) return containerKey(node);
+    }
+    return containerKey(el.parentElement || el);
+  };
+
+  const descs = nodes.map((el, i) => ({
+    id: "ym" + i,
+    group: groupOf(el),
+    label: selfLabel(el),
+    options:
+      el.tagName === "SELECT"
+        ? Array.from(el.options || []).map((o) => (o.textContent || "").trim())
+        : [],
+  }));
+
+  return { nodes, descs };
+}
+
+/** 往单个「年 / 月」控件写值：原生 select 按文案选，伪下拉模拟点击 */
+async function setYearMonthPart(el, candidates) {
+  if (el.tagName === "SELECT") {
+    for (const c of candidates) {
+      if (c && selectOption(el, c)) return true;
+    }
+    return false;
+  }
+
+  for (const c of candidates) {
+    if (!c) continue;
+    try {
+      if (await fillCustomSelect(el, c)) return true;
+    } catch (e) {
+      console.warn("[求职简历助手] 年月控件填充失败：", c, e);
+    }
+  }
+  return false;
+}
+
+/**
+ * 把「2005-08」拆进「年 + 月」两个控件。
+ * 只有确认是一对年月才动手：配错会把 08 写进年份框，比不填更糟。
+ */
+async function fillYearMonthPairs(payload, doneFields, filled, customMissed) {
+  if (typeof JH_DATEGROUP === "undefined" || typeof JH_DATE === "undefined") return;
+
+  const { nodes, descs } = collectYearMonthControls();
+  if (nodes.length < 2) return;
+
+  const pairs = JH_DATEGROUP.jhPairYearMonth(descs);
+  if (!pairs.length) return;
+
+  const byId = new Map(nodes.map((el, i) => ["ym" + i, el]));
+
+  for (const pair of pairs) {
+    const yearEl = byId.get(pair.yearId);
+    const monthEl = byId.get(pair.monthId);
+    if (!yearEl || !monthEl) continue;
+
+    const field = detectField(yearEl, payload) || detectField(monthEl, payload);
+    if (!field || doneFields.has(field)) continue;
+
+    const value = String(payload[field] || "").trim();
+    if (!value) continue;
+
+    const parts = JH_DATE.jhSplitYearMonth(value);
+    if (!parts.year || !parts.month) continue;
+
+    const okYear = await setYearMonthPart(yearEl, [parts.year]);
+    // 月份两种写法都试：「01/02」和「1/2」在不同站点都常见
+    const okMonth = await setYearMonthPart(monthEl, [parts.month, String(Number(parts.month))]);
+
+    if (!okYear && !okMonth) {
+      // 认出了控件但选项对不上，单独记账，让用户知道该手填
+      customMissed.push({ field, reason: "no-option" });
+      continue;
+    }
+
+    const shown = [okYear ? parts.year : "", okMonth ? parts.month : ""].filter(Boolean).join("-");
+    filled.push({ field, value: shown });
+    doneFields.add(field);
+    highlight(yearEl);
+    highlight(monthEl);
+    if (!okYear || !okMonth) {
+      console.warn("[求职简历助手] 年月只填了一半：", field, shown);
+    }
+  }
 }
 
 /* ==================== 自定义下拉（伪下拉）填充 ==================== */
@@ -750,20 +964,31 @@ async function fillCustomSelect(trigger, value) {
 
   simulateClick(trigger);
 
-  // 等浮层出现：框架渲染是异步的，轮询 12 次 × 50ms
-  let layer = null;
-  for (let i = 0; i < 12 && !layer; i++) {
-    await jhSleep(50);
-    layer = getLayer();
-  }
+  // 单个控件的时间上限：到点就放弃，绝不拖累后面的字段
+  const deadline = Date.now() + JH_CUSTOM_PER_MS;
+  const remaining = () => deadline - Date.now();
+  /** 轮询等条件成立，直到 deadline；返回成立时的值或 null */
+  const waitUntil = async (probe, step = 50) => {
+    while (remaining() > 0) {
+      const v = probe();
+      if (v) return v;
+      await jhSleep(Math.min(step, Math.max(10, remaining())));
+    }
+    return null;
+  };
+
+  // 等浮层出现：框架渲染是异步的（远程加载的甚至要几百毫秒）
+  let layer = await waitUntil(getLayer);
   if (!layer) return null;
 
   let hit = await pickInLayer(() => getLayer() || layer, value);
 
   // 可搜索下拉：直接选不到就把值打进搜索框，让组件自己过滤后再选
   if (!hit && typeIntoTrigger(trigger, value)) {
-    await jhSleep(220);
+    await jhSleep(Math.min(220, Math.max(0, remaining())));
     layer = getLayer() || layer;
+    // 过滤后的列表要重新渲染，这里再等一小段，避免读到旧列表
+    await waitUntil(() => getLayer(), 60);
     hit = await pickInLayer(() => getLayer() || layer, value);
   }
 
@@ -773,7 +998,7 @@ async function fillCustomSelect(trigger, value) {
     return null;
   }
 
-  await jhSleep(80);
+  await jhSleep(Math.min(80, Math.max(0, remaining())));
   return hit;
 }
 

@@ -90,6 +90,11 @@ const READ_STATE = () => ({
   city: document.querySelector("#w-city input")?.value || "",
   position: document.querySelector("#w-position .jh-ts-value")?.textContent || "",
   politics: document.querySelector("#w-politics")?.value || "",
+  gradMonth: document.getElementById("w-gradmonth")?.value || "",
+  birthYear: document.getElementById("w-birth-year")?.value || "",
+  birthMonth: document.getElementById("w-birth-month")?.value || "",
+  language: document.querySelector("#w-language input")?.value || "",
+  workyears: document.querySelector("#w-workyears .ant-select-selection-item")?.textContent || "",
   portalsOpen: Array.from(document.querySelectorAll("[data-widget-portal]")).filter(
     (p) => getComputedStyle(p).display !== "none"
   ).length,
@@ -136,32 +141,58 @@ function check(name, actual, expected) {
       expectCity: "辽宁省 / 大连市",
       expectPosition: "系统运维工程师",
       politics: "共青团员",
+      // v0.10.0：原生 <input type="month"> 只认 YYYY-MM
+      graduationYear: "2027-06",
+      // v0.10.0：年月分离的两个下拉，要拆成 2005 / 08
+      birth: "2005-08",
+      // v0.10.0：页面上第 5、6 个伪下拉，用来验证「控件变多后不会被时间预算跳过」
+      languageLevel: "CET-6",
+      workYears: "应届生",
     };
 
     const result = await page.evaluate(async (p) => {
       const r = await fillResume(p);
+      // 临时诊断：看每个伪下拉被认成了哪个字段
+      const dbg = collectCustomTriggers().map((t) => {
+        const box = customTriggerBox(t);
+        return {
+          ctx: getTextContext(t).replace(/\s+/g, " ").slice(0, 48),
+          field: detectField(box, p) || detectField(t, p) || "(无)",
+        };
+      });
       return {
+        dbg,
         filled: r.filled.map((x) => x.field).sort(),
         filledCustom: r.filledCustom.map((x) => `${x.field}:${x.kind}`).sort(),
         missed: r.missed,
+        customMissed: r.customMissed || [],
         counts: r.scan.counts,
       };
     }, payload);
 
+    result.dbg.forEach((d) => console.log(`      [dbg] ${d.field}  ←  ${d.ctx}`));
+
     await new Promise((r) => setTimeout(r, 300));
     const after = await page.evaluate(READ_STATE);
 
-    // 1. 识别到 5 个伪下拉触发器（4 个自定义 + 1 个原生 select 单独计数）
-    check("页面扫描：识别到 4 个自定义下拉触发器", result.counts.custom, 4);
+    // 1. 识别到 6 个伪下拉触发器（v0.10.0 增加到 6 个，用来压测时间预算）
+    check("页面扫描：识别到 6 个自定义下拉触发器", result.counts.custom, 6);
 
     // 2. 四种形态各自命中，且能区分来源
-    check("填充结果：5 个字段全部命中", result.filled.length, 5);
+    check("填充结果：9 个字段全部命中", result.filled.length, 9);
     check(
       "形态识别：普通选项 / 可搜索 / 级联 / 表格行",
       result.filledCustom.join(","),
-      "education:option,expectCity:cascade,expectPosition:row,nation:option"
+      "education:option,expectCity:cascade,expectPosition:row,languageLevel:option,nation:option,workYears:option"
     );
     check("没有字段被漏掉", result.missed.length, 0);
+    if (result.missed.length || result.customMissed.length) {
+      console.log(
+        `      诊断：未匹配 ${JSON.stringify(result.missed)}；认出了控件但没填上 ${JSON.stringify(
+          result.customMissed
+        )}`
+      );
+    }
 
     // 3. 控件里真的显示出了值（不是只返回成功）
     check("Ant Design 下拉显示「本科」", after.education, "本科");
@@ -169,6 +200,15 @@ function check(name, actual, expected) {
     check("级联选择显示「辽宁省 / 大连市」", after.city, "辽宁省 / 大连市");
     check("下拉表格回填「系统运维工程师」", after.position, "系统运维工程师");
     check("原生 <select> 仍是「共青团员」", after.politics, "共青团员");
+
+    // 3.5 日期类控件（v0.10.0）
+    check("原生 month 控件写入 YYYY-MM", after.gradMonth, "2027-06");
+    check("年月分离：年份框 = 2005", after.birthYear, "2005");
+    check("年月分离：月份框 = 08", after.birthMonth, "08");
+
+    // 3.6 第 5、6 个伪下拉（旧版 4 秒总预算会直接跳过它们）
+    check("第 5 个伪下拉填上「CET-6」", after.language, "CET-6");
+    check("第 6 个伪下拉填上「应届生」", after.workyears, "应届生");
 
     // 4. 选完要收起浮层，别把后面的字段挡住
     check("所有浮层都已收起", after.portalsOpen, 0);

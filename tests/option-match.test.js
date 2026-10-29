@@ -38,7 +38,21 @@ async function test(name, fn) {
   });
 
   await test("jhScoreOption：完全相等得最高分", () => {
-    assert.strictEqual(OPT.jhScoreOption("本科", "本科"), 100);
+    // 原文相同（120）要高于「去括号后相同」（100），见下一条用例
+    assert.strictEqual(OPT.jhScoreOption("本科", "本科"), 120);
+  });
+
+  await test("jhScoreOption：原文相同 > 去括号后相同", () => {
+    const exact = OPT.jhScoreOption("CET-6", "CET-6");
+    const stripped = OPT.jhScoreOption("CET-6（520 分）", "CET-6");
+    assert.strictEqual(exact, 120);
+    assert.strictEqual(stripped, 100);
+    assert.ok(exact > stripped, "原文相同必须排在前面");
+  });
+
+  await test("jhPickOption：CET-6 与 CET-6（520 分）并存时不判歧义", () => {
+    const opts = ["CET-4", "CET-6", "CET-6（520 分）", "专业英语四级", "无"];
+    assert.strictEqual(OPT.jhPickOption(opts, "CET-6"), 1);
   });
 
   await test("jhScoreOption：选项含目标值 > 目标值含选项", () => {

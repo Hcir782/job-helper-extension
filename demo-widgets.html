@@ -171,6 +171,43 @@
             </div>
           </div>
         </div>
+
+        <!-- v0.10.0 新增：再放两个自定义下拉，用来验证「控件多了以后不会因为总预算被跳过」 -->
+        <div class="field">
+          <label>外语水平</label>
+          <div class="ant-select" id="w-language">
+            <div class="ant-select-selector" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+              <input class="ant-select-selection-search-input" type="text" aria-label="外语水平" />
+              <span class="ant-select-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>工作年限</label>
+          <div class="ant-select" id="w-workyears">
+            <div class="ant-select-selector" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+              <span class="ant-select-selection-placeholder">请选择工作年限</span>
+              <span class="ant-select-selection-item" style="display:none"></span>
+              <span class="ant-select-arrow">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v0.10.0 新增：原生月份控件，验证日期归一化（简历写 2027-06，控件只认 YYYY-MM） -->
+        <div class="field">
+          <label>毕业时间</label>
+          <input class="native" type="month" name="graduationYear" id="w-gradmonth" />
+        </div>
+
+        <!-- v0.10.0 新增：年月分离的两个下拉（出生年月常见写法），验证「2005-08 拆成 2005 / 08」 -->
+        <div class="field">
+          <label>出生年月</label>
+          <div class="jh-ym-pair" style="display:flex;gap:8px">
+            <select class="native" id="w-birth-year" aria-label="年" style="flex:1"></select>
+            <select class="native" id="w-birth-month" aria-label="月" style="flex:1"></select>
+          </div>
+        </div>
       </div>
 
       <div class="actions">
@@ -183,6 +220,8 @@
 
   <script src="field-dictionary.js"></script>
   <script src="lib/option-match.js"></script>
+  <script src="lib/date-value.js"></script>
+  <script src="lib/date-group.js"></script>
   <script src="site-adapters.js"></script>
   <script src="content.js"></script>
   <script src="demo-widgets.js"></script>

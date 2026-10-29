@@ -10,6 +10,9 @@
 
 const EDU_OPTIONS = ["大专", "本科", "硕士", "博士"];
 const NATION_OPTIONS = ["汉族", "回族", "满族", "蒙古族", "壮族", "维吾尔族", "朝鲜族"];
+/** v0.10.0：故意放一个「CET-6（520 分）」，用来验证括号被忽略后同分取更短的 */
+const LANG_OPTIONS = ["CET-4", "CET-6", "CET-6（520 分）", "专业英语四级", "无"];
+const WORKYEAR_OPTIONS = ["应届生", "1 年以内", "1-3 年", "3-5 年"];
 const CASCADE = {
   辽宁省: ["沈阳市", "大连市", "鞍山市"],
   吉林省: ["长春市", "吉林市", "四平市"],
@@ -306,6 +309,10 @@ document.addEventListener("DOMContentLoaded", () => {
   widgets.nation = mountAntSelect(document.getElementById("w-nation"), NATION_OPTIONS, { searchable: true });
   widgets.city = mountCascader(document.getElementById("w-city"));
   widgets.position = mountTableSelect(document.getElementById("w-position"));
+  // v0.10.0：多两个自定义下拉，用来验证「控件变多后不会因为时间预算被跳过」
+  widgets.language = mountAntSelect(document.getElementById("w-language"), LANG_OPTIONS, { searchable: true });
+  widgets.workyears = mountAntSelect(document.getElementById("w-workyears"), WORKYEAR_OPTIONS);
+  mountYearMonthPair();
 
   document.getElementById("btn-fill-custom")?.addEventListener("click", runFill);
   document.getElementById("btn-reset-custom")?.addEventListener("click", resetAll);
@@ -320,6 +327,10 @@ function buildDemoPayload(data) {
   const payload = Object.assign({}, data);
   const city = String(payload.expectCity || "").replace(/\s/g, "");
   if (CITY_PATH[city]) payload.expectCity = CITY_PATH[city];
+  // 演示页专用补位：真实简历里「出生年月」按用户要求留空，
+  // 但年月分离控件需要一个值才能验证「2005-08 → 2005 / 08」的拆分。
+  // 只在这里补，不写回简历，不污染用户数据。
+  if (!payload.birth) payload.birth = "2005-08";
   return payload;
 }
 
@@ -354,10 +365,35 @@ async function runFill() {
   }
 }
 
+/**
+ * 年月分离控件（v0.10.0）。
+ * 真实网申常把「出生年月 / 入学时间」拆成两个原生 select：
+ * 一个是年份列表，一个是 01-12 月份列表，各自带「年」「月」占位。
+ * 这类控件按字段名匹配不到「出生年月」，必须靠 lib/date-group.js 先配对再拆值。
+ */
+function mountYearMonthPair() {
+  const y = document.getElementById("w-birth-year");
+  const m = document.getElementById("w-birth-month");
+  if (!y || !m) return;
+
+  const yOpts = ['<option value="">年</option>'];
+  for (let i = 2010; i >= 2000; i--) yOpts.push(`<option value="${i}">${i}</option>`);
+  y.innerHTML = yOpts.join("");
+
+  const mOpts = ['<option value="">月</option>'];
+  for (let i = 1; i <= 12; i++) {
+    const v = String(i).padStart(2, "0");
+    mOpts.push(`<option value="${v}">${v}</option>`);
+  }
+  m.innerHTML = mOpts.join("");
+}
+
 function resetAll() {
   Object.values(widgets).forEach((w) => w && w.reset && w.reset());
-  const sel = document.getElementById("w-politics");
-  if (sel) sel.value = "";
+  ["w-politics", "w-gradmonth", "w-birth-year", "w-birth-month"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
   const msg = document.getElementById("custom-msg");
   msg.className = "msg";
   msg.textContent = "控件已重置。";
