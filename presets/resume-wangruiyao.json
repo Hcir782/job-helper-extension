@@ -42,15 +42,15 @@
     "projectExp": "项目名称：简填 JobFill（求职简历助手）｜独立开发｜2026.10-至今\n一句话：纯本地的 Chrome/Edge 扩展（Manifest V3），把一份简历一键填进不同招聘系统的网申表单，并管理简历版本与投递台账。\n· 字段识别：44 字段别名词典作单一数据源，结合 label / placeholder / aria-label / 邻近文案，叠加 5 个招聘站点与 Ant Design、Element、Arco 组件库适配器打分匹配；英文关键词做边界匹配，避免 companyName 被误认成「姓名」。\n· 框架适配：直接赋值会被 React/Vue 内部状态覆盖，改为调用原型链原生 value setter 并派发 input/change/blur；contenteditable 用 execCommand('insertText') 写入。\n· 伪下拉：Ant/Element/自研下拉的选项点击后才渲染到 body，模拟 mousedown→mouseup→click 完整手势并轮询等浮层出现，支持普通下拉 / 可搜索下拉 / 省级联 / 下拉表格四种形态；匹配算法抽成纯函数库，遇到歧义宁可不填。\n· 数据与工程：chrome.storage.local 本地存储、多简历版本管理、投递记录按「公司+岗位+自然日」去重、CSV 导出（BOM + RFC4180）；Node 沙箱 + mock chrome/DOM 跑 73 条自动断言，含 11 条真实浏览器端到端测试。\nGitHub：https://github.com/Hcir782/job-helper-extension",
     "campusExp": "",
     "awards": "",
-    "certificates": "红帽 RHCSA、RHCE；CET-4",
-    "languageLevel": "CET-4",
+    "certificates": "红帽 RHCSA、RHCE；CKA；CET-6",
+    "languageLevel": "CET-6",
     "skills": "Linux、Shell 脚本、Kubernetes、Ansible、Python、Podman、计算机网络；了解 Golang",
     "papers": "",
     "portfolio": "",
 
     "currentCompany": "",
     "currentPosition": "",
-    "selfIntro": "网络工程专业本科在读（2027 届），熟悉 Linux 系统与 Shell 脚本，掌握 Kubernetes 集群部署与 Ansible 自动化运维，熟悉 Podman 容器与计算机网络基础，了解 Golang。已取得红帽 RHCSA、RHCE 认证，具备 CET-4 英语能力。做事细致、执行力强，希望在系统运维方向持续深耕。",
+    "selfIntro": "网络工程专业本科在读（2027 届），熟悉 Linux 系统与 Shell 脚本，掌握 Kubernetes 集群部署与 Ansible 自动化运维，熟悉 Podman 容器与计算机网络基础，了解 Golang。已取得红帽 RHCSA、RHCE 认证与 CKA（Certified Kubernetes Administrator），具备 CET-6 英语能力。做事细致、执行力强，希望在系统运维方向持续深耕。",
     "hobbies": "徒步、看电影、听音乐"
   },
   "application": {
