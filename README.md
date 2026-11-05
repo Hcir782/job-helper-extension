@@ -186,6 +186,10 @@
 
 想自己验证：打开 `demo-feishu.html`（完全按 atsx 结构还原，输入框无 placeholder，下拉是 div），点「用已保存的简历填充」，5 个输入框 + 3 个下拉应全部填上。
 
+<img src="docs/screenshot-feishu.png" width="720" alt="飞书 atsx 表单填充效果" />
+
+<sub>上图为实测：字段名只存在于 `.atsx-form-item-label` 里、输入框没有任何 placeholder 的情况下，5 个输入框与 3 个 atsx 下拉仍全部命中（绿色描边为命中提示）。</sub>
+
 ### 多简历版本管理
 
 面板顶部的版本工具栏可以管理多份简历：
@@ -312,7 +316,7 @@ job-helper-extension/
 ├─ demo-widgets.js       # 复杂控件演示页的假组件实现（浮层渲染到 body 末尾，贴近真实框架）
 ├─ demo-feishu.html      # 飞书 atsx 表单演示页（无 placeholder、label 在容器里、下拉是 div）
 ├─ demo-feishu.js        # 飞书 atsx 演示页的假组件实现（还原 .atsx-select 的点击与浮层）
-├─ docs/                 # README 用的演示素材（面板截图、字段全貌、标签页居中、填充动图）
+├─ docs/                 # README 用的演示素材（面板截图、字段全貌、标签页居中、填充动图、飞书适配效果）
 ├─ CHANGELOG.md          # 版本更新日志（v0.1.0 → 当前版本）
 ├─ tests/
 │  ├─ popup-version.test.js     # 简历版本管理 13 条断言
