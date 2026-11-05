@@ -58,6 +58,9 @@ const JH_CUSTOM_TRIGGER_SEL = [
   ".el-cascader .el-input__inner",
   ".arco-select-view",
   ".ivu-select-selection",
+  // 飞书 atsx（Ant Design 3 分支）：触发器是 .atsx-select-selection，
+  // 正常情况它自带 role="combobox"，但部分版本会丢掉 role，这里显式补上
+  ".atsx-select-selection",
 ].join(",");
 
 /** 浮层（选项容器）选择器：Ant / Element / Arco / iView 以及自研组件的常见命名 */
@@ -71,6 +74,7 @@ const JH_LAYER_SEL = [
   ".ivu-select-dropdown",
   ".arco-select-popup",
   ".arco-trigger-popup",
+  ".atsx-select-dropdown",
   "[class*='cascader-panel']",
   "[class*='-dropdown']",
   "[class*='-popup']",
@@ -81,6 +85,7 @@ const JH_LAYER_SEL = [
 const JH_OPTION_SEL = [
   '[role="option"]',
   ".ant-select-item-option",
+  ".atsx-select-dropdown-menu-item",
   ".el-select-dropdown__item",
   ".el-cascader-node",
   "li",
@@ -276,6 +281,7 @@ async function fillResume(payload) {
   const scan = {
     host: location.hostname,
     frame: window.top === window.self ? "top" : "iframe",
+    adapter: jhAdapter ? `${jhAdapter.name}（置信度 ${jhAdapter.confidence}）` : "通用规则",
     counts: {
       text: textBoxes.length,
       editable: editables.length,
@@ -517,6 +523,96 @@ function detectField(el, payload) {
   return best;
 }
 
+/* ---------- 字段文案提取的辅助工具 ---------- */
+
+/** label 文案清洗：去掉必填星号 / 首尾冒号 / 多余空白（"* 姓名：" → "姓名"） */
+function jhCleanLabelText(raw) {
+  return String(raw == null ? "" : raw)
+    .replace(/\s+/g, " ")
+    .replace(/^[\s*＊·•]+/, "")
+    .replace(/[\s*＊:：]+$/, "")
+    .trim();
+}
+
+/** 类名看起来像「字段名」元素？（兼容 antd / atsx / arco / semi / tdesign 的命名） */
+function jhClassLooksLikeLabel(el) {
+  const cls = typeof el.className === "string" ? el.className : "";
+  if (!cls) return false;
+  return cls
+    .split(/\s+/)
+    .some((c) =>
+      /(?:^|[-_])(?:form-item-label|item-label|field-label|form-label|label)(?:[-_]|$)/i.test(c)
+    );
+}
+
+/** 类名看起来像「字段容器」？ */
+function jhClassLooksLikeFormItem(el) {
+  const cls = typeof el.className === "string" ? el.className : "";
+  if (!cls) return false;
+  return cls
+    .split(/\s+/)
+    .some((c) =>
+      /(?:^|[-_])(?:form-item|formitem|form-group|form-row|form-field|field-item|field)(?:[-_]|$)/i.test(c)
+    );
+}
+
+/**
+ * 在容器里找一个「排在控件之前、文字短、不含控件本身」的 label 元素。
+ * 为什么要"排在控件之前"：一屏里 label 永远在控件上方/左侧，
+ * 而同一个容器里后面那个字段的 label 在文档顺序里排在控件之后，借此排除掉。
+ * 为什么取"最后一个"：文档顺序里越靠后 = 离控件越近，嵌套的
+ * <div class="atsx-form-item-label"><label>姓名</label></div> 取到的是最内层的「姓名」。
+ *
+ * @returns {string} 清洗后的文案，找不到返回空串
+ */
+function jhFindLabelIn(container, el, selectors) {
+  const list = (selectors || []).filter(Boolean);
+  if (!list.length) return "";
+
+  let nodes = [];
+  try {
+    nodes = Array.from(container.querySelectorAll(list.join(",")));
+  } catch (e) {
+    return "";
+  }
+
+  let best = "";
+  nodes.forEach((n) => {
+    if (n === el || n.contains(el)) return;
+    // 字段名必须排在控件前面
+    const pos = n.compareDocumentPosition ? n.compareDocumentPosition(el) : 0;
+    if (!(pos & 4)) return; // Node.DOCUMENT_POSITION_FOLLOWING
+    const t = jhCleanLabelText(n.innerText);
+    if (!t || t.length > 24) return;
+    if (/^[\d\s.,:;/\-—－]+$/.test(t)) return; // 纯数字/符号不算字段名
+    best = t;
+  });
+  return best;
+}
+
+/**
+ * 组件库通用兜底：从控件往上找最近的「字段容器」，取里面的 label。
+ *
+ * 为什么需要它：Ant Design 这一族组件库（antd / 飞书 atsx / arco / semi…）的字段名
+ * 既不写在 <label for> 上，也不是控件的兄弟节点，而是容器里的一个 xxx-label 元素；
+ * 而控件的祖先链上（input → form-item-children → form-item-control → col →
+ * form-item）前三层全是"外壳"，文字里只有 +86 / 获取验证码这类噪音。
+ * 所以这里最多往上走 6 层，只认类名像 label 的元素——精确度靠类名保证，
+ * 不靠文本长度猜。
+ */
+function jhFindFormItemLabel(el) {
+  let node = el.parentElement;
+  for (let depth = 0; node && depth < 6; depth++) {
+    if (jhClassLooksLikeFormItem(node)) {
+      const t = jhFindLabelIn(node, el, ['[class*="label"]', '[class*="Label"]', "label"]);
+      if (t) return t;
+    }
+    if (node.tagName === "FORM" || node.tagName === "BODY") break;
+    node = node.parentElement;
+  }
+  return "";
+}
+
 /**
  * 提取控件周边的可见文案，**带可信度权重**。
  *
@@ -543,13 +639,18 @@ function getTextContextParts(el) {
   add(el.getAttribute("title"), 3);
 
   // 优先用站点/组件库适配器定位字段文案
+  let hasLabel = false;
   if (jhAdapter) {
     try {
       const container = el.closest(jhAdapter.containerSelector);
       if (container) {
-        const labelEl = container.querySelector(jhAdapter.labelSelector);
-        if (labelEl && labelEl.innerText) {
-          add(labelEl.innerText, 3);
+        const selectors =
+          jhAdapter.labelSelectors ||
+          (jhAdapter.labelSelector ? [jhAdapter.labelSelector] : []);
+        const labelText = jhFindLabelIn(container, el, selectors);
+        if (labelText) {
+          add(labelText, 3);
+          hasLabel = true;
         } else {
           const text = (container.innerText || "").trim();
           if (text && text.length <= 40) add(text, 2);
@@ -560,11 +661,17 @@ function getTextContextParts(el) {
     }
   }
 
+  // 组件库通用兜底：自研 ATS 复用 atsx/antd 类名、或第一次见到的站点都能覆盖
+  if (!hasLabel) {
+    const generic = jhFindFormItemLabel(el);
+    if (generic) add(generic, 3);
+  }
+
   // <label for="xxx"> 形式
   if (el.id) {
     try {
       const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (forLabel) add(forLabel.innerText, 3);
+      if (forLabel) add(jhCleanLabelText(forLabel.innerText), 3);
     } catch (e) {
       // CSS.escape 不可用时忽略
     }
@@ -572,18 +679,18 @@ function getTextContextParts(el) {
 
   // 包裹型 <label><span>姓名</span><input></label>
   const label = el.closest("label");
-  if (label) add(label.innerText, 3);
+  if (label) add(jhCleanLabelText(label.innerText), 3);
 
   // 伪下拉：触发器自己没文案，label 通常在「控件容器」的前一个兄弟或容器内部的 label 上
   const box = customTriggerBox(el);
   if (box && box !== el) {
     const prevSibling = box.previousElementSibling;
     if (prevSibling) {
-      const prevText = (prevSibling.innerText || "").trim();
+      const prevText = jhCleanLabelText(prevSibling.innerText);
       if (prevText && prevText.length <= 20) add(prevText, 3);
     }
     const innerLabel = box.querySelector("label");
-    if (innerLabel && innerLabel.innerText) add(innerLabel.innerText, 3);
+    if (innerLabel) add(jhCleanLabelText(innerLabel.innerText), 3);
   }
 
   // 向上最多 3 层：既取容器自身的短文案，也看每层的「前一个兄弟」——
@@ -834,7 +941,7 @@ async function fillYearMonthPairs(payload, doneFields, filled, customMissed) {
 function customTriggerBox(el) {
   return (
     el.closest(
-      ".ant-select, .el-select, .el-cascader, .arco-select, .ivu-select, .ant-form-item, [class*='form-item'], [class*='formItem']"
+      ".ant-select, .el-select, .el-cascader, .arco-select, .ivu-select, .atsx-select, .ant-form-item, [class*='form-item'], [class*='formItem']"
     ) || el
   );
 }
@@ -847,11 +954,20 @@ function collectCustomTriggers() {
   return raw.filter((el) => !raw.some((other) => other !== el && other.contains(el)));
 }
 
-/** 当前可见的浮层（选项容器）：display:none 的、空的都不算 */
+/**
+ * 当前可见的浮层（选项容器）：display:none 的、空的都不算。
+ *
+ * ⚠️ 必须只保留**最外层**：浮层里的子孙元素常常也命中 JH_LAYER_SEL，
+ * 因为兜底规则是 [class*='-dropdown'] —— 飞书 atsx 的
+ * .atsx-select-dropdown > ul.atsx-select-dropdown-menu > li.atsx-select-dropdown-menu-item
+ * 三层都会命中。如果不去重，getLayer() 取"最后一个"，拿到的是一个 <li>，
+ * 在里面找选项自然是空的 → 认出了控件但一个都选不上（reason: no-option）。
+ */
 function visibleLayers() {
-  return Array.from(document.querySelectorAll(JH_LAYER_SEL)).filter(
+  const all = Array.from(document.querySelectorAll(JH_LAYER_SEL)).filter(
     (el) => isVisible(el) && (el.innerText || "").trim().length > 0
   );
+  return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
 }
 
 function jhSleep(ms) {

@@ -344,7 +344,7 @@ async function test(name, fn) {
     // 页面提取到的三项必须原样保留
     assert.strictEqual(preset.data.name, "王瑞瑶");
     assert.strictEqual(preset.data.phone, "15248522685");
-    assert.strictEqual(preset.data.email, "hcir012@qq.com");
+    assert.strictEqual(preset.data.email, "wangruiyao87@gmail.com");
     // 档案补全字段
     assert.strictEqual(preset.data.school, "大连科技学院");
     assert.strictEqual(preset.data.major, "网络工程");

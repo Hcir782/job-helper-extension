@@ -2,15 +2,21 @@
  * site-adapters.js —— 站点适配器注册表
  *
  * 不同招聘网站的 DOM 结构差异巨大：label 可能是 <label>、可能是兄弟 <span>，
- * 也可能藏在 Ant Design / Element UI 这类组件库的固定类名里。
- * 每个适配器声明"怎么找字段容器"和"怎么取字段文案"，找不到站点专属配置时，
- * 会退回到框架级适配（antd / element / arco），最后再退回到通用启发式规则。
+ * 也可能藏在 Ant Design / Element UI / 飞书 atsx 这类组件库的固定类名里。
+ * 每个适配器声明"怎么找字段容器"（containerSelector）和"怎么取字段文案"
+ * （labelSelectors），找不到站点专属配置时，会退回到框架级适配
+ * （atsx / antd / element / arco），最后再退回到通用启发式规则。
  *
  * ⚠️ 版权说明：适配器结构参考了开源项目 OpenJobAutofill
  *    （MIT License, Copyright (c) 2026 Br1an67）的 SITE_ADAPTERS 设计，
  *    本项目按需裁剪并重写为更小的选择器集合。
  */
 
+/**
+ * labelSelectors 是**有序数组**：按顺序试，第一个能取到非空短文案的就用它。
+ * 顺序很重要——组件库的专属类名必须排在 `label` 前面，
+ * 否则容器里嵌套的单选框 <label>（文字是"是/否"）会被先命中，导致字段认错。
+ */
 const JH_SITE_ADAPTERS = [
   {
     id: "zhipin",
@@ -19,7 +25,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.9,
     indicators: [".form-item", '[class*="form-item"]', '[class*="resume"]', '[class*="geek"]'],
     containerSelector: '.form-item,[class*="form-item"],[class*="field"],[class*="resume-item"],[class*="info-item"]',
-    labelSelector: 'label,[class*="label"],[class*="title"],[class*="name"]',
+    labelSelectors: ['[class*="label"]', '[class*="title"]', "label", '[class*="name"]'],
   },
   {
     id: "liepin",
@@ -28,7 +34,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.88,
     indicators: [".form-item", '[class*="resume"]', '[class*="apply"]', '[class*="edit"]'],
     containerSelector: '.form-item,[class*="form-item"],[class*="formItem"],[class*="field"],[class*="apply"],[class*="resume-item"]',
-    labelSelector: 'label,[class*="label"],[class*="Label"],[class*="title"],[class*="name"]',
+    labelSelectors: ['[class*="label"]', '[class*="Label"]', '[class*="title"]', "label", '[class*="name"]'],
   },
   {
     id: "zhaopin",
@@ -37,7 +43,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.86,
     indicators: [".form-item", '[class*="resume"]', '[class*="form"]'],
     containerSelector: '.form-item,[class*="form-item"],[class*="resume-field"],[class*="field-row"],[class*="item"]',
-    labelSelector: 'label,[class*="label"],[class*="title"]',
+    labelSelectors: ['[class*="label"]', '[class*="title"]', "label"],
   },
   {
     id: "51job",
@@ -46,7 +52,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.85,
     indicators: [".form-item", '[class*="resume"]', '[class*="form"]'],
     containerSelector: '.form-item,[class*="form-item"],[class*="field"],[class*="item"]',
-    labelSelector: 'label,[class*="label"],[class*="title"]',
+    labelSelectors: ['[class*="label"]', '[class*="title"]', "label"],
   },
   {
     id: "lagou",
@@ -55,9 +61,28 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.84,
     indicators: [".form-item", '[class*="resume"]', '[class*="form"]'],
     containerSelector: '.form-item,[class*="form-item"],[class*="field"]',
-    labelSelector: 'label,[class*="label"],[class*="title"]',
+    labelSelectors: ['[class*="label"]', '[class*="title"]', "label"],
+  },
+  // ===== 飞书招聘（字节 ATS）：域名固定是 *.jobs.feishu.cn =====
+  {
+    id: "feishu",
+    name: "飞书招聘（atsx）",
+    hostPattern: /(?:^|\.)jobs\.feishu\.cn$/i,
+    confidence: 0.92,
+    indicators: [".atsx-form-item", ".atsx-form", ".atsx-select"],
+    containerSelector: ".atsx-form-item",
+    labelSelectors: [".atsx-form-item-label", ".atsx-form-item-label-text", "label"],
   },
   // ===== 框架级适配：企业自建招聘系统大量基于这些组件库 =====
+  {
+    id: "atsx",
+    name: "飞书 atsx 表单",
+    hostPattern: null,
+    confidence: 0.82,
+    indicators: [".atsx-form-item", ".atsx-select", ".atsx-form"],
+    containerSelector: ".atsx-form-item",
+    labelSelectors: [".atsx-form-item-label", ".atsx-form-item-label-text", "label"],
+  },
   {
     id: "antd",
     name: "Ant Design 表单",
@@ -65,7 +90,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.8,
     indicators: [".ant-form-item", ".ant-select", ".ant-radio-wrapper"],
     containerSelector: ".ant-form-item",
-    labelSelector: ".ant-form-item-label,label",
+    labelSelectors: [".ant-form-item-label", ".ant-form-item-label-text", "label"],
   },
   {
     id: "element",
@@ -74,7 +99,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.78,
     indicators: [".el-form-item", ".el-select", ".el-radio"],
     containerSelector: ".el-form-item",
-    labelSelector: ".el-form-item__label,label",
+    labelSelectors: [".el-form-item__label", ".el-form-item-label", "label"],
   },
   {
     id: "arco",
@@ -83,7 +108,7 @@ const JH_SITE_ADAPTERS = [
     confidence: 0.76,
     indicators: [".arco-form-item", ".arco-select-view"],
     containerSelector: ".arco-form-item",
-    labelSelector: ".arco-form-item-label,label",
+    labelSelectors: [".arco-form-item-label", "label"],
   },
 ];
 
@@ -126,6 +151,12 @@ const JH_JOB_DOMAINS = [
   "zhaopin.com",
   "51job.com",
   "lagou.com",
+  // 飞书招聘：大量公司的校招/社招站点都挂在 <公司>.jobs.feishu.cn 下，
+  // 例如安克创新 anker-in.jobs.feishu.cn。放在这里是"认得出这是招聘站"，
+  // 而不是限定某一家公司。
+  "jobs.feishu.cn",
+  "mokahr.com",
+  "kuaishou.cn",
 ];
 
 /** host 是否属于已知招聘站点（投递记录只在这些站点自动登记，避免全网页记录） */

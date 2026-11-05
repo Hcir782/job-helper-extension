@@ -749,13 +749,29 @@ function describeFailure(scan) {
   if (!scan) return "页面没有返回诊断信息，请刷新页面后重试。";
 
   const c = scan.counts || {};
-  const base = `未匹配到字段：${scan.host || "未知页面"}（${scan.frame === "iframe" ? "iframe 内" : "主文档"}）扫描到 文本框 ${c.text || 0}、富文本 ${c.editable || 0}、下拉 ${c.select || 0}、单选 ${c.radio || 0}。`;
+  const base =
+    `未匹配到字段：${scan.host || "未知页面"}（${scan.frame === "iframe" ? "iframe 内" : "主文档"}）` +
+    `扫描到 文本框 ${c.text || 0}、富文本 ${c.editable || 0}、原生下拉 ${c.select || 0}、` +
+    `自定义下拉 ${c.custom || 0}、单选 ${c.radio || 0}。` +
+    (scan.adapter ? `识别模式：${scan.adapter}。` : "");
 
-  if (!c.text && !c.editable && !c.select && !c.radio) {
+  if (!c.text && !c.editable && !c.select && !c.custom && !c.radio) {
     return base + "页面上没有可填充的控件，可能还没进入填写页面。";
   }
-  if (scan.samples && scan.samples.length) {
-    return base + "页面上控件的提示文案：" + scan.samples.join(" | ");
+
+  const samples = (scan.samples || []).filter((s) => s && s !== "(无文案)");
+  if (samples.length) {
+    return base + "页面上控件的提示文案：" + samples.join(" | ");
+  }
+
+  // 控件找到了但一个文案都读不出来：说明字段名不在 placeholder/label[for] 里，
+  // 而是藏在这套组件库的自定义容器里，需要补适配器
+  if (c.text || c.select || c.custom) {
+    return (
+      base +
+      "控件都读不到字段名（没有 placeholder，也没有 label[for]），" +
+      "说明这个站点用了自定义组件库，请把这条提示截图反馈给开发者补适配。"
+    );
   }
   return base;
 }

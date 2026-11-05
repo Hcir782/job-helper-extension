@@ -2,6 +2,33 @@
 
 本项目的所有版本变更都记录在这里。版本号遵循 `主版本.次版本.修订号`，每个功能完成并实测通过后单独提交，提交信息遵循 `feat:` / `fix:` 规范。
 
+## v0.10.1 · 2026-10-26
+
+这一版专治「飞书招聘的表单一个字段都填不上」。
+
+### 修复
+
+- **飞书招聘（atsx 组件库）整页无法填充**：`*.jobs.feishu.cn` 的表单里，输入框没有 `placeholder`，字段名写在 `.atsx-form-item-label` 里——既不是 `<label for="x">`，也不是控件的兄弟节点。而控件的祖先链前三层（`form-item-children → form-item-control → col`）文字只有「+86」「获取验证码」这类噪音，向上第 3 层刚好还没走到 `.atsx-form-item`。
+  - 面板表现：扫描到控件，但每个字段的文案都是「(无文案)」，44 个字段全部未匹配。
+  - 现在：新增 `feishu`（按域名 `*.jobs.feishu.cn`）与 `atsx`（按类名）两个适配器，容器 `.atsx-form-item`、标签 `.atsx-form-item-label`。
+  - 适配器的标签字段由单个 `labelSelector` 改为**有序数组** `labelSelectors`：组件库专属类名排在 `label` 之前，避免先命中容器里嵌套的单选框 `<label>`（文字是「是/否」）。
+  - 新增通用兜底 `jhFindFormItemLabel()`：向上最多 6 层找「类名像字段容器」的祖先，再取里面「类名像 label、文字 ≤24 字、文档顺序排在控件之前」的元素。覆盖所有复刻 antd/atsx 命名的自研 ATS，不需要为每家单独写适配器。
+  - label 文案统一清洗：去掉必填星号 `*`／`＊`、首尾冒号，避免「* 姓名：」这种东西污染匹配。
+- **浮层定位取错元素 → 下拉「认出来了但一个都选不上」**：`JH_LAYER_SEL` 的兜底规则 `[class*='-dropdown']` 会把 `.atsx-select-dropdown` 里的 `ul.atsx-select-dropdown-menu` 和每个 `li.atsx-select-dropdown-menu-item` 也算成浮层；`getLayer()` 取"最后一个"，拿到的是一个 `<li>`，在 `<li>` 里找选项永远是空的，全部记为 `no-option`。
+  - 现在 `visibleLayers()` 只保留**最外层**的命中元素（滤掉被其他命中元素包含的），一次修好所有「选项类名里带 dropdown」的组件库。
+
+### 改进
+
+- 面板诊断信息补充「自定义下拉 N 个」与「识别模式：xxx」；当控件都在但一个文案都读不出来时，明确提示「这个站点用了自定义组件库，需要补适配」，而不是让用户以为页面没加载完。
+- 投递记录站点表补上 `jobs.feishu.cn`、`mokahr.com`、`kuaishou.cn`。
+- 新增 `demo-feishu.html` / `demo-feishu.js`：完全按飞书 atsx 的真实 DOM 结构还原（输入框无 placeholder、label 在 `.atsx-form-item-label`、下拉是 `div[role=combobox]`）。
+
+### 测试
+
+- 新增 `tests/e2e-feishu.js`（20 条断言）：在真实 Edge 里验证「字段名只在容器 label 里」时 5 个输入框 + 3 个 atsx 下拉能否全部填上。
+- 修正 README 里的历史计数（`option-match` 实为 22 条，此前写成 24）。
+- 全套 **94 条单测 + 36 条真实浏览器端到端 = 130 条断言**全部通过。
+
 ## v0.10.0 · 2026-10-25
 
 这一版专治「有些下拉框填不上」，同时补上日期类控件。

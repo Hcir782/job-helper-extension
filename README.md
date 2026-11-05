@@ -4,7 +4,7 @@
 
 > 技术栈：Chrome Extension Manifest V3 · 原生 HTML/CSS/JS · chrome.storage.local
 
-**下载即用**：[最新版本 v0.10.0](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
+**下载即用**：[最新版本 v0.10.1](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
 
 | 插件面板（44 字段 / 版本管理 / 投递记录） | 一键填充真实表单 |
 | --- | --- |
@@ -33,6 +33,7 @@
 | 自定义下拉 / 可搜索下拉 / 级联选择 / **下拉表格** 填充 | ✅ 已完成（v0.9.0） |
 | **原生日期控件**（date / month）与**年月分离双下拉**填充 | ✅ 已完成（v0.10.0） |
 | 下拉较多时不再跳过靠后的控件（单控件 1.8s / 总预算 12s） | ✅ 已完成（v0.10.0） |
+| 飞书招聘（`*.jobs.feishu.cn`，atsx 组件库）表单适配 | ✅ 已完成（v0.10.1） |
 
 ## 支持的招聘网站
 
@@ -42,10 +43,10 @@
 
 | 类型 | 覆盖 |
 | --- | --- |
-| 站点适配 | BOSS直聘、猎聘、智联招聘、前程无忧、拉勾 |
-| 组件库适配（企业自建招聘系统常用） | Ant Design、Element UI、Arco Design |
+| 站点适配 | BOSS直聘、猎聘、智联招聘、前程无忧、拉勾、飞书招聘（`*.jobs.feishu.cn`） |
+| 组件库适配（企业自建招聘系统常用） | 飞书 atsx、Ant Design、Element UI、Arco Design |
 
-未命中任何适配器时，会退回通用启发式规则（label / placeholder / aria-label / 邻近文本）。
+未命中任何适配器时，会退回通用启发式规则（label / placeholder / aria-label / 邻近文本 / **表单项容器内的 `*label` 元素**）。
 
 > 如果不想让悬浮按钮出现在每个网页，打开面板取消勾选「在网页右下角显示悬浮按钮」即可，已打开的页面会实时隐藏。
 
@@ -88,7 +89,7 @@
 - clone 的：在仓库目录执行 `git pull`
 - 然后到 `chrome://extensions/` 点插件卡片上的 **刷新 ↻**，再刷新已打开的网页
 
-面板右上角显示的版本号（如 `v0.10.0`）就是当前生效版本，对不上说明没刷新成功。
+面板右上角显示的版本号（如 `v0.10.1`）就是当前生效版本，对不上说明没刷新成功。
 
 ### 5. 卸载 / 清空数据
 
@@ -168,6 +169,22 @@
 <img src="docs/screenshot-widgets.png" width="720" alt="复杂控件填充效果" />
 
 <sub>上图为实测：原生下拉「共青团员」、自定义下拉「本科」、可搜索下拉「汉族」、省级联「辽宁省 / 大连市」、职位下拉表格「系统运维工程师」一次填完，绿色描边为命中提示。</sub>
+
+### 飞书招聘表单（v0.10.1）
+
+飞书招聘（`<公司>.jobs.feishu.cn`，例如 `anker-in.jobs.feishu.cn`）用的是字节自研的 **atsx** 组件库，DOM 结构和别的站点都不一样：
+
+| 难点 | 具体表现 | 插件怎么处理 |
+| --- | --- | --- |
+| 输入框没有 `placeholder` | `<input>` 上没有任何提示文案 | 从表单项容器里取 |
+| 字段名不是 `<label for>` | 也不是 `.ant-form-item-label` 那种标准结构 | 适配器读 `.atsx-form-item-label` |
+| 祖先链前几层全是噪音 | `input → form-item-children → form-item-control → col → form-item`，中间几层文字只有「+86」「获取验证码」 | 标签查找走上限 6 层，只认类名像 `*label` 的元素，且必须是**排在控件之前**、文字 ≤24 字 |
+| 下拉是 div 不是 `<select>` | `.atsx-select-selection`（带 `role="combobox"`），选项点开后才渲染到 body 末尾 | 走伪下拉流程：模拟手势 → 等 `.atsx-select-dropdown` → 按文案点 `li` |
+| 浮层层级套娃 | `.atsx-select-dropdown` 里还套着 `ul.atsx-select-dropdown-menu` 和 `li…-menu-item`，三者都命中宽松选择器 `[class*='-dropdown']` | 浮层只保留最外层，否则会在某个 `<li>` 里找选项，永远选不中 |
+
+适配器之外还有一层**通用兜底**：只要某个站点把字段名放在「类名像 form-item 的容器 + 类名像 label 的元素」里，即使没有专属适配器也能认出来。
+
+想自己验证：打开 `demo-feishu.html`（完全按 atsx 结构还原，输入框无 placeholder，下拉是 div），点「用已保存的简历填充」，5 个输入框 + 3 个下拉应全部填上。
 
 ### 多简历版本管理
 
@@ -293,16 +310,19 @@ job-helper-extension/
 ├─ demo.js               # 演示页逻辑，复用同一套填充引擎
 ├─ demo-widgets.html     # 复杂控件演示页（Ant 下拉 / 可搜索下拉 / 省级联 / 职位下拉表格）
 ├─ demo-widgets.js       # 复杂控件演示页的假组件实现（浮层渲染到 body 末尾，贴近真实框架）
+├─ demo-feishu.html      # 飞书 atsx 表单演示页（无 placeholder、label 在容器里、下拉是 div）
+├─ demo-feishu.js        # 飞书 atsx 演示页的假组件实现（还原 .atsx-select 的点击与浮层）
 ├─ docs/                 # README 用的演示素材（面板截图、字段全貌、标签页居中、填充动图）
 ├─ CHANGELOG.md          # 版本更新日志（v0.1.0 → 当前版本）
 ├─ tests/
 │  ├─ popup-version.test.js     # 简历版本管理 13 条断言
 │  ├─ ledger.test.js            # 投递记录去重 / CSV / 页面探测 20 条断言
-│  ├─ option-match.test.js      # 下拉选项匹配算法 24 条断言（纯函数，无需浏览器）
+│  ├─ option-match.test.js      # 下拉选项匹配算法 22 条断言（纯函数，无需浏览器）
 │  ├─ date-value.test.js        # 日期归一化 16 条断言（纯函数，无需浏览器）
 │  ├─ date-group.test.js        # 年月分离控件配对 16 条断言（纯函数，无需浏览器）
 │  ├─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载 + 预设导入 + 字段一致性 7 条断言
-│  └─ e2e-widgets.js            # 端到端：真实浏览器里填 6 个自定义控件 + 日期类控件（需 Edge + puppeteer-core，缺则跳过）
+│  ├─ e2e-widgets.js            # 端到端：真实浏览器里填 6 个自定义控件 + 日期类控件
+│  └─ e2e-feishu.js             # 端到端：真实浏览器里填飞书 atsx 结构表单（字段名只在容器 label 里）
 └─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
 ```
 
@@ -311,24 +331,26 @@ job-helper-extension/
 ```bash
 node tests/popup-version.test.js     # 13/13 通过
 node tests/ledger.test.js            # 20/20 通过
-node tests/option-match.test.js      # 24/24 通过
+node tests/option-match.test.js      # 22/22 通过
 node tests/date-value.test.js        # 16/16 通过
 node tests/date-group.test.js        # 16/16 通过
 node tests/integration-smoke.test.js # 7/7 通过
 node tests/e2e-widgets.js            # 16/16 通过（需 Edge + puppeteer-core，缺环境自动跳过）
+node tests/e2e-feishu.js             # 20/20 通过（同上）
 ```
 
 > e2e 若提示「未安装 puppeteer-core」，用管理目录里已装好的那份运行：
 > `NODE_PATH=C:\Users\hcir0\.workbuddy\binaries\node\workspace\node_modules node tests/e2e-widgets.js`
 
-前六套共 **96 条断言**不依赖浏览器：用 `vm` 沙箱加载真实脚本、mock 掉 `chrome.*` 与 DOM，所以能在提交前就发现「按钮没绑定事件」「字段与词典不一致」这类问题。最后一套 `e2e-widgets.js` 必须真浏览器——伪下拉的核心是「点击 → 等框架异步渲染 → 点选项」，mock DOM 测不出这个时序。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+前六套共 **94 条断言**不依赖浏览器：用 `vm` 沙箱加载真实脚本、mock 掉 `chrome.*` 与 DOM，所以能在提交前就发现「按钮没绑定事件」「字段与词典不一致」这类问题。后两套必须真浏览器——伪下拉的核心是「点击 → 等框架异步渲染 → 点选项」，字段识别依赖真实 `innerText` 与文档顺序，mock DOM 测不出这个时序。全合计 **130 条断言**。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 技术要点
 
 - **按需动态注入**：manifest 对所有网页声明静态注入；页面未响应时，由 `background.js` 调用 `chrome.scripting.executeScript`（配合 `activeTab` 权限）现场注入，因此**任何招聘网站都能用**，也避免了枚举域名的漏配问题。
 - **字段别名词典**：44 个字段各自维护一份别名表（如手机号 ← 手机号/联系电话/联系方式/移动电话/phone…），得分 = 命中别名的长度 × 该段文案的**可信度权重**。
 - **上下文按距离加权**：控件自己的 `placeholder` / `aria-label` / 真正挂着它的 `label` 权重 3，向上第 1~3 层容器 2~1，各层的「前一个兄弟」1.5~0.5。旧版把周边文案平铺成一个字符串，结果「外语水平」的下拉会把上一行「期望职位」的标签也吸进来，关键词等长时按字典顺序先到先得，就认错了字段。
-- **站点适配器**：为 5 个招聘站点和 3 个常用前端组件库分别声明"字段容器选择器 + 文案选择器"，先定位结构再取文案，比纯关键词匹配稳得多。
+- **站点适配器**：为 6 个招聘站点和 4 个常用前端组件库分别声明"字段容器选择器 + 有序的文案选择器列表"，先定位结构再取文案，比纯关键词匹配稳得多。选择器有序是关键——组件库专属类名（`.atsx-form-item-label`）必须排在通配的 `label` 之前，否则会先命中容器里嵌套的单选框 `<label>`（文字是「是/否」）。
+- **组件库无关的标签兜底**：向上最多 6 层找「类名像字段容器（`*form-item` / `*field`）」的祖先，再取容器里「类名像 label、文字 ≤24 字、且文档顺序排在控件之前」的元素。飞书 atsx、Ant Design、Arco、Semi 这一族组件库都是同一种写法，所以即使没有专属适配器也能认出来；「排在控件之前」这个约束是为了不把同一容器里下一个字段的标签抢过来。
 - **React 受控组件适配**：Boss 直聘等站点使用 React，直接 `el.value = x` 会被框架内部状态覆盖。本项目改为调用原型链上的原生 `value` setter，再派发 `input` / `change` / `blur` 事件，框架才能感知变化。
 - **中文 label 去空白匹配**：招聘站点的 label 常写成「姓　名」「手 机 号」，匹配前统一去除空白。
 - **防误填**：英文关键词在 `name` / `id` 属性中要求边界匹配，避免 `companyName` 被识别成「姓名」；中文关键词只匹配可见文案，避免被 class 名干扰。
@@ -348,7 +370,7 @@ node tests/e2e-widgets.js            # 16/16 通过（需 Edge + puppeteer-core�
 | `scripting` | 页面未注入脚本时按需动态注入 |
 | `<all_urls>`（host） | 让内容脚本能在所有网页运行，从而在任意招聘站点提供悬浮入口 |
 
-插件不上传任何数据：简历内容只在本地存储与本地页面之间流转，唯一的网络请求是插件自己检查更新的 GitHub Release 查询（未启用时可删除）。
+插件不上传任何数据：简历内容只在本地存储与本地页面之间流转。全项目**不发起任何网络请求**——唯一的 `fetch` 是用 `chrome.runtime.getURL()` 读取扩展包内的 `presets/*.json`，请求不出本机。
 
 ## 已知限制
 
@@ -358,7 +380,8 @@ node tests/e2e-widgets.js            # 16/16 通过（需 Edge + puppeteer-core�
 - **日历弹层仍未支持**：点开是一个日历面板（Ant `DatePicker`、Element `DatePicker`），要在面板里逐级点年 → 月 → 日。这类控件占位文案通常是「请选择日期」，与原生 `input[type=date]` 不是一回事。原生日期控件与「年 + 月」双下拉**已支持**（v0.10.0）。
 - **下拉里的「搜索 + 远程加载」**：极少数下拉要把关键词传给服务器才返回选项，插件打了字但列表还没回来，会超时跳过。
 - **附件上传类字段不处理**：Moka/快手的「上传简历」需要文件选择，插件只填文本，不代传文件。
-- **投递记录只在 5 个内置适配的招聘站点自动登记**（BOSS直聘 / 猎聘 / 智联 / 前程无忧 / 拉勾），其他网页不登记——这是刻意为之，避免在无关网页产生噪音记录、也减少隐私顾虑。未识别出公司/岗位时仍会记录 URL，显示为「未知公司/未知岗位」。
+- **投递记录只在 8 个内置适配的招聘站点自动登记**（BOSS直聘 / 猎聘 / 智联 / 前程无忧 / 拉勾 / 飞书招聘 `jobs.feishu.cn` / Moka / 快手），其他网页不登记——这是刻意为之，避免在无关网页产生噪音记录、也减少隐私顾虑。未识别出公司/岗位时仍会记录 URL，显示为「未知公司/未知岗位」。
+- **飞书招聘的申请表需要先登录**：分享链接（带 `share_token`）在未登录时会跳到 `/login`，此时页面上只有手机号、验证码两个输入框，填充自然没有字段可填。先登录再进申请表即可。
 - 使用 `<all_urls>` 权限后，扩展详情页会显示"读取和更改所有网站数据"，这是为了在所有网页提供悬浮入口所必需的。
 
 ## 设计原则
