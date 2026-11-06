@@ -308,7 +308,13 @@ function diagnose() {
   const adapter = refreshAdapter();
   const items = [];
 
-  collectTextBoxes().forEach((el) => {
+  const textBoxes = collectTextBoxes();
+  const editables = collectEditables();
+  const selects = collectSelects();
+  const customTriggers = collectCustomTriggers();
+  const radios = collectRadios();
+
+  textBoxes.forEach((el) => {
     items.push({
       kind: el.tagName === "TEXTAREA" ? "textarea" : "input:" + (el.type || "text"),
       ctx: getTextContext(el).slice(0, 40),
@@ -316,7 +322,7 @@ function diagnose() {
     });
   });
 
-  collectEditables().forEach((el) => {
+  editables.forEach((el) => {
     items.push({
       kind: "contenteditable",
       ctx: getTextContext(el).slice(0, 40),
@@ -333,7 +339,7 @@ function diagnose() {
   });
 
   // 自定义下拉：单独列出来，方便判断「是没识别到控件，还是识别到了但选不中」
-  collectCustomTriggers().forEach((el) => {
+  customTriggers.forEach((el) => {
     const box = customTriggerBox(el);
     items.push({
       kind: "自定义下拉",
@@ -342,8 +348,8 @@ function diagnose() {
     });
   });
 
-  if (collectRadios().length) {
-    items.push({ kind: "radio", ctx: "共 " + collectRadios().length + " 个单选按钮", attr: "" });
+  if (radios.length) {
+    items.push({ kind: "radio", ctx: "共 " + radios.length + " 个单选按钮", attr: "" });
   }
 
   return {
@@ -352,6 +358,15 @@ function diagnose() {
     frame: window.top === window.self ? "top" : "iframe",
     adapter: adapter ? `${adapter.name}（置信度 ${adapter.confidence}）` : "通用规则",
     total: items.length,
+    // 供后台按框架打分用：哪一帧的控件最多，哪一帧才像简历表单
+    counts: {
+      text: textBoxes.length,
+      editable: editables.length,
+      select: selects.length,
+      custom: customTriggers.length,
+      radio: radios.length,
+    },
+    samples: textBoxes.slice(0, 6).map((el) => getTextContext(el).slice(0, 18) || "(无文案)"),
     items: items.slice(0, 30),
   };
 }

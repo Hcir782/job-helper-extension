@@ -109,57 +109,192 @@ async function openPanel() {
 /* ==================== 动态注入 + 转发 ==================== */
 
 /**
- * 确保目标标签页里已有内容脚本。
- * 已注入（PING 有回应）则跳过；否则用 chrome.scripting 现场注入。
+ * 列出标签页里的所有框架 id（主文档是 0）。
+ *
+ * 为什么要按框架逐个处理：`chrome.tabs.sendMessage` 不带 frameId 时会把消息广播给
+ * 所有框架，但回调只拿到**最先回话的那一个**。京东校招简历页
+ * （campus.jd.com/api/wx/position/index#/resume）里挂着一个客服 iframe
+ * （salary-collect-pro.pf.jd.com，里面只有一个「向我提问」输入框），
+ * 它比主文档先回话，于是面板显示「iframe 内 扫描到 文本框 1」——
+ * 真正的简历表单在主文档里，压根没被处理。
  */
-async function ensureContent(tabId) {
-  const pong = await sendToTab(tabId, { type: "PING" });
-  if (pong && pong.ok) return { injected: false };
-
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: CONTENT_FILES,
-  });
-
-  await sleep(150);
-
-  const again = await sendToTab(tabId, { type: "PING" });
-  if (!again) throw new Error("脚本已注入但页面无响应，请刷新页面后重试");
-
-  return { injected: true };
+async function listFrameIds(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: () => true,
+    });
+    const ids = (results || [])
+      .map((r) => r.frameId)
+      .filter((id) => typeof id === "number");
+    if (ids.length) return Array.from(new Set(ids)).sort((a, b) => a - b);
+  } catch (e) {
+    // 个别框架注入失败（沙箱页 / 已被移除），退回只处理主文档
+  }
+  return [0];
 }
 
-/** 在指定标签页执行填充或诊断 */
+/**
+ * 确保指定框架里已有内容脚本。
+ * 只往缺脚本的那一帧注入：content.js 每注入一次就多挂一个 onMessage 监听，
+ * 全量重注会让同一次填充被执行两遍（下拉被点两次、值来回变）。
+ * @returns {Promise<boolean>} 是否在本轮新注入了脚本
+ */
+async function ensureFrame(tabId, frameId) {
+  const pong = await sendToTab(tabId, { type: "PING" }, frameId);
+  if (pong && pong.ok) return false;
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [frameId] },
+      files: CONTENT_FILES,
+    });
+  } catch (e) {
+    return false;
+  }
+
+  await sleep(150);
+  const again = await sendToTab(tabId, { type: "PING" }, frameId);
+  return !!(again && again.ok);
+}
+
+/**
+ * 给一帧打分：「有多像一张简历表单」。
+ * 判据就是控件数量——客服 / 埋点 iframe 通常只有 1 个输入框，
+ * 真表单动辄十几个。伪下拉和富文本权重更高，因为它们只在表单里出现。
+ */
+function frameScore(resp) {
+  const c = (resp && (resp.counts || (resp.scan && resp.scan.counts))) || {};
+  const score =
+    (c.text || 0) + (c.editable || 0) * 2 + (c.select || 0) + (c.custom || 0) * 2 + (c.radio || 0);
+  return score || (resp && resp.total) || 0;
+}
+
+/** 合并多帧诊断结果：每帧的条目都带上来源标注，避免"以为是同一页"的误解 */
+function mergeDiagnose(scans, injected) {
+  if (!scans.length) return { ok: false, reason: "页面未响应，请刷新后重试" };
+
+  const top = scans[0].resp;
+  const multi = scans.length > 1;
+  const items = [];
+
+  scans.forEach((s) => {
+    const tag = multi
+      ? `〔${s.resp.host || "框架"}${s.frameId === 0 ? " 主文档" : " iframe"}〕`
+      : "";
+    (s.resp.items || []).forEach((it) => {
+      items.push(Object.assign({}, it, { ctx: tag + (it.ctx || "(无文案)") }));
+    });
+  });
+
+  return {
+    ok: true,
+    host: top.host,
+    frame: top.frame,
+    adapter: top.adapter,
+    frames: scans.length,
+    total: items.length,
+    items: items.slice(0, 40),
+    injected: !!injected,
+  };
+}
+
+/** 把多帧的控件计数加起来，用于「一帧都没填上」时的整体提示 */
+function sumCounts(scans) {
+  const total = { text: 0, editable: 0, select: 0, custom: 0, radio: 0 };
+  scans.forEach((s) => {
+    const c = s.resp.counts || {};
+    Object.keys(total).forEach((k) => {
+      total[k] += c[k] || 0;
+    });
+  });
+  return total;
+}
+
+/**
+ * 在指定标签页执行填充或诊断。
+ *
+ * 流程：枚举框架 → 补注入 → 每帧体检（只读，很便宜）→ 按控件多少排序
+ *   DIAGNOSE    ：合并成一份带框架标注的结果
+ *   FILL_RESUME ：从控件最多的帧开始填，第一个真填上东西的就收工。
+ *                 不能对每帧都跑一遍，伪下拉每帧最多要 12 秒，而且会误点客服输入框。
+ */
 async function runInTab(tabId, action, payload) {
   if (!tabId) return { ok: false, reason: "没有目标标签页" };
 
-  let injectInfo = { injected: false };
-  try {
-    injectInfo = await ensureContent(tabId);
-  } catch (e) {
-    return { ok: false, reason: "无法注入脚本：" + e.message };
+  const frameIds = await listFrameIds(tabId);
+  const ready = [];
+  let injected = false;
+  for (const frameId of frameIds) {
+    if (await ensureFrame(tabId, frameId)) injected = true;
+    ready.push(frameId);
+  }
+  if (!ready.length) return { ok: false, reason: "无法注入脚本：页面未响应，请刷新后重试" };
+
+  // 体检：拿到每帧的控件数量，据此决定谁才是表单
+  const scans = [];
+  for (const frameId of ready) {
+    const r = await sendToTab(tabId, { type: "DIAGNOSE" }, frameId);
+    if (r && r.ok) scans.push({ frameId, resp: r, score: frameScore(r) });
+  }
+  if (!scans.length) return { ok: false, reason: "页面未响应，请刷新后重试" };
+  scans.sort((a, b) => b.score - a.score);
+
+  if (action === "DIAGNOSE") return mergeDiagnose(scans, injected);
+
+  // 填充：从最像表单的那一帧开始，填上就停。
+  // 只尝试「得分不低于最高分一半」的帧，且最多 3 帧 —— 广告 / 客服 iframe 里
+  // 也可能有一两个输入框，对着它们跑伪下拉会白等 12 秒。
+  const topScore = scans[0].score;
+  const threshold = Math.max(1, topScore * 0.5);
+  let best = null;
+  let attempts = 0;
+
+  for (const s of scans) {
+    // 第一帧（控件最多的）无论如何都试一次，否则「页面上没有任何控件」会退化成
+    // 「页面未响应」，用户就看不懂了
+    if (attempts > 0 && s.score < threshold) break;
+    if (attempts >= 3) break;
+    attempts++;
+
+    const message = { type: action };
+    if (payload !== undefined) message.payload = payload;
+    const r = await sendToTab(tabId, message, s.frameId);
+    if (r && r.ok && Array.isArray(r.filled) && r.filled.length) {
+      best = r;
+      break;
+    }
+    if (!best && r) best = r;
+  }
+  if (!best) return { ok: false, reason: "页面未响应，请刷新后重试" };
+
+  if (!best.filled || !best.filled.length) {
+    // 一帧都没填上：把全页的统计塞进 scan，别让用户只看到某个 iframe 的 1 个输入框
+    best.scan = Object.assign({}, best.scan || {}, {
+      counts: sumCounts(scans),
+      frames: scans.length,
+      frameHosts: scans.map((s) => s.resp.host).filter(Boolean),
+    });
+  } else {
+    best.scan = Object.assign({}, best.scan || {}, { frames: scans.length });
   }
 
-  const message = { type: action };
-  if (payload !== undefined) message.payload = payload;
-
-  const resp = await sendToTab(tabId, message);
-  if (!resp) return { ok: false, reason: "页面未响应，请刷新后重试" };
-
-  // 把"是否刚注入"带回去，面板可以据此提示
-  if (typeof resp === "object") resp.injected = !!injectInfo.injected;
-  return resp;
+  best.injected = !!injected;
+  return best;
 }
 
-function sendToTab(tabId, message) {
+function sendToTab(tabId, message, frameId) {
   return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, message, (resp) => {
+    const opts = typeof frameId === "number" ? { frameId } : undefined;
+    const cb = (resp) => {
       if (chrome.runtime.lastError) {
         resolve(null);
         return;
       }
       resolve(resp);
-    });
+    };
+    if (opts) chrome.tabs.sendMessage(tabId, message, opts, cb);
+    else chrome.tabs.sendMessage(tabId, message, cb);
   });
 }
 

@@ -36,7 +36,7 @@
     "sourceChannel": "",
     "referrerCode": "",
     "internshipExp": "",
-    "projectExp": "项目名称：简填 JobFill — 求职表单自动填充扩展（Chrome / Edge · Manifest V3）｜独立开发｜2026.10-至今\n一句话：纯本地的浏览器扩展，把一份简历一键填进 Moka、快手、飞书招聘等网申系统，覆盖 44 个字段、9 类表单控件，配套 130 条自动化断言。\n· 缺陷定位：网申表单大量使用 Ant Design / Element 伪下拉，选项要点击后才异步渲染到 body。用「模拟完整手势 + 轮询浮层 + DOM 状态探针」复现并修复三类缺陷——控件超过 4 个时靠后字段被整条跳过（总预算 4s→12s、单控件限 1.8s）、上下文污染导致字段认错（改为按 DOM 距离加权打分）、选项文案去括号后同分被判歧义（打分拆两档）。\n· 控件适配：原生输入 / 下拉 / 单选 / 富文本、伪下拉、可搜索下拉、级联选择、下拉表格、原生日期与「年+月」双下拉；为飞书招聘（atsx 组件库）单独适配「字段名只在容器 label 里、输入框无 placeholder」的表单结构；选项匹配抽成纯函数库（归一化 / 打分 / 选优），遇歧义宁可不填，避免写错数据。\n· 数据与权限：数据仅存 chrome.storage.local，不联网上传；权限最小化（storage / activeTab / scripting），无后台服务、无第三方接口。\n· 工程保障：Node 沙箱 + mock chrome/DOM 跑 94 条单测，Puppeteer 驱动真实 Edge 跑 36 条端到端；交付为解压即用的静态包，无 Node / npm / 构建步骤。\nGitHub：https://github.com/Hcir782/job-helper-extension",
+    "projectExp": "项目名称：简填 JobFill — 求职表单自动填充扩展（Chrome / Edge · Manifest V3）｜独立开发｜2026.10-至今\n一句话：纯本地的浏览器扩展，把一份简历一键填进 Moka、快手、飞书招聘、京东校招等网申系统，覆盖 44 个字段、9 类表单控件，配套 138 条自动化断言。\n· 缺陷定位：网申表单大量使用 Ant Design / Element 伪下拉，选项要点击后才异步渲染到 body。用「模拟完整手势 + 轮询浮层 + DOM 状态探针」复现并修复四类缺陷——控件超过 4 个时靠后字段被整条跳过（总预算 4s→12s、单控件限 1.8s）、上下文污染导致字段认错（改为按 DOM 距离加权打分）、选项文案去括号后同分被判歧义（打分拆两档）、页面挂客服 iframe 时消息被它抢答（改为按框架枚举 + 控件数量打分定位表单帧）。\n· 控件适配：原生输入 / 下拉 / 单选 / 富文本、伪下拉、可搜索下拉、级联选择、下拉表格、原生日期与「年+月」双下拉；为飞书招聘（atsx 组件库）单独适配「字段名只在容器 label 里、输入框无 placeholder」的表单结构；选项匹配抽成纯函数库（归一化 / 打分 / 选优），遇歧义宁可不填，避免写错数据。\n· 数据与权限：数据仅存 chrome.storage.local，不联网上传；权限最小化（storage / activeTab / scripting），无后台服务、无第三方接口。\n· 工程保障：Node 沙箱 + mock chrome/DOM 跑 94 条单测，Puppeteer 驱动真实 Edge 跑 44 条端到端；交付为解压即用的静态包，无 Node / npm / 构建步骤。\nGitHub：https://github.com/Hcir782/job-helper-extension",
     "campusExp": "",
     "awards": "",
     "certificates": "红帽 RHCSA、RHCE；CKA；CET-6",

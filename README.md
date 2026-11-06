@@ -4,7 +4,7 @@
 
 > 技术栈：Chrome Extension Manifest V3 · 原生 HTML/CSS/JS · chrome.storage.local
 
-**下载即用**：[最新版本 v0.10.1](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
+**下载即用**：[最新版本 v0.10.2](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
 
 | 插件面板（44 字段 / 版本管理 / 投递记录） | 一键填充真实表单 |
 | --- | --- |
@@ -34,6 +34,7 @@
 | **原生日期控件**（date / month）与**年月分离双下拉**填充 | ✅ 已完成（v0.10.0） |
 | 下拉较多时不再跳过靠后的控件（单控件 1.8s / 总预算 12s） | ✅ 已完成（v0.10.0） |
 | 飞书招聘（`*.jobs.feishu.cn`，atsx 组件库）表单适配 | ✅ 已完成（v0.10.1） |
+| 多框架页面（主文档表单 + 客服/埋点 iframe）自动挑对那一帧 | ✅ 已完成（v0.10.2） |
 
 ## 支持的招聘网站
 
@@ -89,7 +90,7 @@
 - clone 的：在仓库目录执行 `git pull`
 - 然后到 `chrome://extensions/` 点插件卡片上的 **刷新 ↻**，再刷新已打开的网页
 
-面板右上角显示的版本号（如 `v0.10.1`）就是当前生效版本，对不上说明没刷新成功。
+面板右上角显示的版本号（如 `v0.10.2`）就是当前生效版本，对不上说明没刷新成功。
 
 ### 5. 卸载 / 清空数据
 
@@ -189,6 +190,26 @@
 <img src="docs/screenshot-feishu.png" width="720" alt="飞书 atsx 表单填充效果" />
 
 <sub>上图为实测：字段名只存在于 `.atsx-form-item-label` 里、输入框没有任何 placeholder 的情况下，5 个输入框与 3 个 atsx 下拉仍全部命中（绿色描边为命中提示）。</sub>
+
+### 页面里有 iframe（v0.10.2）
+
+很多招聘页会在右下角挂一个客服/埋点 iframe，甚至把表单本身也塞进 iframe。这里有一个**容易踩的坑**：
+
+> `chrome.tabs.sendMessage(tabId, msg)` 不带 `frameId` 时会把消息**广播给所有框架**，但回调只拿到**最先回话的那一个**。
+
+京东校招简历页（`campus.jd.com/api/wx/position/index#/resume`）就是这样：客服 iframe（`salary-collect-pro.pf.jd.com`）里只有一个「向我提问」输入框，它抢在主文档前面回话，于是面板显示「iframe 内 扫描到 文本框 1」，真正的表单一个字段都没被处理。
+
+现在的做法：
+
+| 步骤 | 做什么 | 为什么 |
+| --- | --- | --- |
+| ① 枚举框架 | `chrome.scripting.executeScript({ allFrames: true })` 拿到所有 frameId | 不枚举就只能瞎猜 |
+| ② 按帧补注入 | 只给 `PING` 没回应的那一帧注入内容脚本 | 全量重注会多挂一个消息监听，一次填充被执行两遍 |
+| ③ 逐帧体检 | 每帧跑一次只读的 `DIAGNOSE`，按控件数量打分（伪下拉/富文本权重更高） | 客服 iframe 通常只有 1 个输入框，真表单动辄十几个 |
+| ④ 只填最像的那帧 | 从高分往低分试，**第一个真填上东西的就收工**；只试「不低于最高分一半」的帧，最多 3 帧 | 不能在广告 iframe 上白等 12 秒伪下拉预算 |
+| ⑤ 失败时合并统计 | 一帧都没填上就把全页控件数求和，并在诊断里标注每个条目的来源框架 | 否则用户只看到某个 iframe 的 1 个输入框，完全看不懂 |
+
+想自己验证：`node tests/e2e-frames.js` —— 它会加载真实扩展、起一个本地 http 服务打开 `demo-frames.html`（主文档是简历表单，右下角客服 iframe 只有一个输入框），然后断言「表单填上、客服输入框一个字符都没被写、诊断里两个框架都标了来源」。
 
 ### 多简历版本管理
 
@@ -316,6 +337,8 @@ job-helper-extension/
 ├─ demo-widgets.js       # 复杂控件演示页的假组件实现（浮层渲染到 body 末尾，贴近真实框架）
 ├─ demo-feishu.html      # 飞书 atsx 表单演示页（无 placeholder、label 在容器里、下拉是 div）
 ├─ demo-feishu.js        # 飞书 atsx 演示页的假组件实现（还原 .atsx-select 的点击与浮层）
+├─ demo-frames.html      # 多框架页（主文档是简历表单 + 右下角客服 iframe 只有一个输入框）
+├─ demo-frames-chat.html # 客服 iframe 的内容（「向我提问」输入框 + 0/500 投递进展）
 ├─ docs/                 # README 用的演示素材（面板截图、字段全貌、标签页居中、填充动图、飞书适配效果）
 ├─ CHANGELOG.md          # 版本更新日志（v0.1.0 → 当前版本）
 ├─ tests/
@@ -326,7 +349,8 @@ job-helper-extension/
 │  ├─ date-group.test.js        # 年月分离控件配对 16 条断言（纯函数，无需浏览器）
 │  ├─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载 + 预设导入 + 字段一致性 7 条断言
 │  ├─ e2e-widgets.js            # 端到端：真实浏览器里填 6 个自定义控件 + 日期类控件
-│  └─ e2e-feishu.js             # 端到端：真实浏览器里填飞书 atsx 结构表单（字段名只在容器 label 里）
+│  ├─ e2e-feishu.js             # 端到端：真实浏览器里填飞书 atsx 结构表单（字段名只在容器 label 里）
+│  └─ e2e-frames.js             # 端到端：加载真实扩展，验证多框架页面里填的是主文档而不是客服 iframe
 └─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
 ```
 
@@ -341,16 +365,18 @@ node tests/date-group.test.js        # 16/16 通过
 node tests/integration-smoke.test.js # 7/7 通过
 node tests/e2e-widgets.js            # 16/16 通过（需 Edge + puppeteer-core，缺环境自动跳过）
 node tests/e2e-feishu.js             # 20/20 通过（同上）
+node tests/e2e-frames.js             # 8/8 通过（同上，会加载真实扩展）
 ```
 
 > e2e 若提示「未安装 puppeteer-core」，用管理目录里已装好的那份运行：
 > `NODE_PATH=C:\Users\hcir0\.workbuddy\binaries\node\workspace\node_modules node tests/e2e-widgets.js`
 
-前六套共 **94 条断言**不依赖浏览器：用 `vm` 沙箱加载真实脚本、mock 掉 `chrome.*` 与 DOM，所以能在提交前就发现「按钮没绑定事件」「字段与词典不一致」这类问题。后两套必须真浏览器——伪下拉的核心是「点击 → 等框架异步渲染 → 点选项」，字段识别依赖真实 `innerText` 与文档顺序，mock DOM 测不出这个时序。全合计 **130 条断言**。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+前六套共 **94 条断言**不依赖浏览器：用 `vm` 沙箱加载真实脚本、mock 掉 `chrome.*` 与 DOM，所以能在提交前就发现「按钮没绑定事件」「字段与词典不一致」这类问题。后三套必须真浏览器——伪下拉的核心是「点击 → 等框架异步渲染 → 点选项」，字段识别依赖真实 `innerText` 与文档顺序，多框架派发还要挂在真扩展上才能测，mock DOM 都不行。全合计 **138 条断言**。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 技术要点
 
 - **按需动态注入**：manifest 对所有网页声明静态注入；页面未响应时，由 `background.js` 调用 `chrome.scripting.executeScript`（配合 `activeTab` 权限）现场注入，因此**任何招聘网站都能用**，也避免了枚举域名的漏配问题。
+- **按框架派发**：先 `allFrames` 枚举 frameId，只给缺脚本的那一帧补注入（重注会多挂消息监听、一次填充跑两遍），再逐帧做只读体检按控件数量打分，填充只落在得分最高且真能填上的那一帧。`chrome.tabs.sendMessage` 不带 `frameId` 会把消息广播给所有框架、只回调最先回话的那个，这是「填了客服窗口、没填表单」的根源。
 - **字段别名词典**：44 个字段各自维护一份别名表（如手机号 ← 手机号/联系电话/联系方式/移动电话/phone…），得分 = 命中别名的长度 × 该段文案的**可信度权重**。
 - **上下文按距离加权**：控件自己的 `placeholder` / `aria-label` / 真正挂着它的 `label` 权重 3，向上第 1~3 层容器 2~1，各层的「前一个兄弟」1.5~0.5。旧版把周边文案平铺成一个字符串，结果「外语水平」的下拉会把上一行「期望职位」的标签也吸进来，关键词等长时按字典顺序先到先得，就认错了字段。
 - **站点适配器**：为 6 个招聘站点和 4 个常用前端组件库分别声明"字段容器选择器 + 有序的文案选择器列表"，先定位结构再取文案，比纯关键词匹配稳得多。选择器有序是关键——组件库专属类名（`.atsx-form-item-label`）必须排在通配的 `label` 之前，否则会先命中容器里嵌套的单选框 `<label>`（文字是「是/否」）。
@@ -379,7 +405,7 @@ node tests/e2e-feishu.js             # 20/20 通过（同上）
 ## 已知限制
 
 - **Boss 直聘在线简历页**是「卡片展示 + 点击弹出编辑」的结构，页面上几乎没有 `input`，一键填充在该页面无字段可填。这类页面需要专门的「点开编辑器再填充」适配，尚未实现。
-- **自定义下拉已支持（v0.9.0）但有边界**：需要选项浮层带常见的类名 / ARIA 角色（`role="option"`、`ant-select-dropdown`、`el-select-dropdown` 等）。如果站点把选项渲染在 **Shadow DOM** 或 **跨域 iframe** 里，插件读不到，会记为「未匹配」。
+- **自定义下拉已支持（v0.9.0）但有边界**：需要选项浮层带常见的类名 / ARIA 角色（`role="option"`、`ant-select-dropdown`、`el-select-dropdown` 等）。如果站点把选项渲染在 **Shadow DOM** 里，插件读不到，会记为「未匹配」。跨域 iframe 里的表单**已支持**（v0.10.2 起按框架派发）。
 - **年月分离控件已支持（v0.10.0）但有前提**：两个下拉要**相邻**且能判断出谁是年、谁是月（有可读的年份/月份选项，或占位文案写着「年」「月」）。如果中间隔着别的控件、或两个控件不在同一容器里，插件宁可不填——配错会把月份写进年份框。
 - **日历弹层仍未支持**：点开是一个日历面板（Ant `DatePicker`、Element `DatePicker`），要在面板里逐级点年 → 月 → 日。这类控件占位文案通常是「请选择日期」，与原生 `input[type=date]` 不是一回事。原生日期控件与「年 + 月」双下拉**已支持**（v0.10.0）。
 - **下拉里的「搜索 + 远程加载」**：极少数下拉要把关键词传给服务器才返回选项，插件打了字但列表还没回来，会超时跳过。
