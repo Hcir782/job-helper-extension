@@ -13,3 +13,7 @@ Thumbs.db
 
 # 本地临时文件
 .commit-msg.txt
+
+# 说明：vendor/ 下的 pdf.js 是**要提交的**——MV3 禁止从 CDN 加载脚本，
+# 打包时必须带上，否则「从简历文件导入」在别人机器上直接不可用。
+# 它们来自 pdfjs-dist@4.0.379 的 legacy build（Apache-2.0）。
