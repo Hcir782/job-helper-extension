@@ -432,7 +432,13 @@ job-helper-extension/
 │  ├─ e2e-feishu.js             # 端到端：真实浏览器里填飞书 atsx 结构表单（字段名只在容器 label 里）
 │  └─ e2e-frames.js             # 端到端：加载真实扩展，验证多框架页面里填的是主文档而不是客服 iframe
 └─ .gitignore            # 忽略编辑器缓存、日志、系统垃圾文件
+
+tools/                    # 仓库根目录下另有一层（不在发布包内）
+├─ pack.js               # 打 Release 包：只挑运行需要的文件压成 zip
+└─ verify-pack.js        # 校验产物：逐条 CRC + manifest / popup 引用完整性
 ```
+
+> `tools/` 与 `docs/` 只服务于开发和 README，不进 Release 包。
 
 运行测试：
 
@@ -455,6 +461,15 @@ node tests/e2e-import.js             # 27/27 通过（同上，会加载真实�
 
 > e2e 若提示「未安装 puppeteer-core」，用管理目录里已装好的那份运行：
 > `NODE_PATH=C:\Users\hcir0\.workbuddy\binaries\node\workspace\node_modules node tests/e2e-widgets.js`
+
+打 Release 包（两条命令，不依赖任何压缩工具）：
+
+```bash
+node tools/pack.js                       # 输出到 D:\jh-dist\job-helper-extension-v<版本>.zip
+node tools/verify-pack.js <刚才的 zip>    # 逐条校验 CRC，并核对 manifest / popup 引用的资源是否都在包里
+```
+
+`pack.js` 只把「运行需要的东西」打进包：`lib/`、`vendor/`、`presets/`、根目录的 js/html/css 与 `manifest.json`，外加几份说明文档；`.git/`、`node_modules/`、`tests/`、`docs/`、`tools/` 全部排除。`verify-pack.js` 会把包解开逐条比对 CRC，并把 `manifest.json` 与 `popup.html` 里引用的每个脚本、样式都对着包内清单查一遍——漏打一个文件（比如忘了 `vendor/pdf.worker.min.mjs`）会立刻暴露，不用等到装上浏览器才发现白屏。
 
 前十套共 **196 条断言**不依赖浏览器：用 `vm` 沙箱加载真实脚本、mock 掉 `chrome.*` 与 DOM，所以能在提交前就发现「按钮没绑定事件」「字段与词典不一致」这类问题。后四套必须真浏览器——伪下拉的核心是「点击 → 等框架异步渲染 → 点选项」，字段识别依赖真实 `innerText` 与文档顺序，多框架派发要挂在真扩展上，PDF 导入还得真跑一遍 pdf.js，mock DOM 都不行。全合计 **267 条断言**。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 

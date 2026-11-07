@@ -35,6 +35,7 @@
 - 新增端到端 `tests/e2e-import.js`：加载真实扩展 + 真实 popup + 手工构造的带文字层 PDF，只把模型换成本地假服务，验证「选文件 → 抽文字 → 抽字段 → 写入存储 → 一键填充进网申表单」整条闭环。
 - `integration-smoke.test.js` 的 popup 沙箱补上 `chrome.storage.session` 桩（缺了会让初始化静默抛错）。
 - 全套 **196 条单测** 全部通过（v0.10.2 时为 94 条）。
+- **打包不再手工拼命令**：新增 `tools/pack.js`（纯 Node 手写 ZIP，不依赖任何压缩工具）与 `tools/verify-pack.js`（逐条校验 CRC，并核对 `manifest.json` / `popup.html` 引用的每个脚本与样式是否都在包里）。v0.11.0 的发布包实测 **32 条目 / CRC 32 通过 / 缺失 0**。
 
 ## v0.10.2 · 2026-11-06
 
