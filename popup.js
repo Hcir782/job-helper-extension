@@ -113,6 +113,9 @@ function bindEvents() {
 
   // 预设简历
   document.getElementById("btn-preset")?.addEventListener("click", loadPresetResume);
+
+  // 从简历 PDF 导入（v0.11.0）
+  bindImportEvents();
 }
 
 /**
@@ -856,4 +859,365 @@ function formatTime(ts) {
   const d = new Date(ts);
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* ==================== 从简历 PDF 导入（v0.11.0） ==================== */
+
+/**
+ * 模块状态。
+ * 为什么不直接把结果写进表单：抽取结果可能只对了一半，
+ * 让人先看一遍差异再决定导入，比"啪一下覆盖现有简历"安全得多。
+ */
+const importState = {
+  busy: false,
+  result: null, // extract() 的返回值
+  fileName: "",
+};
+
+const LLM_STORE_KEY = "llmConfig";
+const LLM_SESSION_KEY = "llmConfigSession";
+const MAX_PDF_BYTES = 8 * 1024 * 1024;
+
+function bindImportEvents() {
+  document.getElementById("btn-pick-file")?.addEventListener("click", () => {
+    document.getElementById("file-input")?.click();
+  });
+
+  document.getElementById("file-input")?.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) handleFile(file);
+    e.target.value = ""; // 允许重复选同一个文件
+  });
+
+  const zone = document.getElementById("drop-zone");
+  if (zone) {
+    ["dragenter", "dragover"].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.add("hover");
+      })
+    );
+    ["dragleave", "drop"].forEach((ev) =>
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.remove("hover");
+      })
+    );
+    zone.addEventListener("drop", (e) => {
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+  }
+
+  document.getElementById("btn-llm-test")?.addEventListener("click", testLLMConnection);
+  document.getElementById("btn-import-apply")?.addEventListener("click", applyImport);
+  document.getElementById("btn-import-cancel")?.addEventListener("click", clearImportResult);
+
+  // 配置项改动即存（Key 是否入 session 区由复选框决定）
+  ["llm-baseurl", "llm-model", "llm-key"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", saveLLMConfig);
+  });
+  document.getElementById("llm-key-session")?.addEventListener("change", saveLLMConfig);
+
+  loadLLMConfig();
+}
+
+/** 读配置：优先 session（只本次会话），其次 local */
+async function loadLLMConfig() {
+  try {
+    const s = await chrome.storage.session.get([LLM_SESSION_KEY]);
+    const local = await chrome.storage.local.get([LLM_STORE_KEY]);
+    const cfg = (s && s[LLM_SESSION_KEY]) || (local && local[LLM_STORE_KEY]) || {};
+
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el && v != null) el.value = v;
+    };
+    set("llm-baseurl", cfg.baseURL);
+    set("llm-model", cfg.model);
+    set("llm-key", cfg.apiKey);
+
+    const sessionBox = document.getElementById("llm-key-session");
+    if (sessionBox) sessionBox.checked = !!cfg.sessionOnly;
+
+    if (!cfg.baseURL) {
+      // 首次使用给一份能直接跑的默认值，降低门槛
+      const b = document.getElementById("llm-baseurl");
+      const m = document.getElementById("llm-model");
+      if (b && !b.value) b.value = "https://api.deepseek.com/v1";
+      if (m && !m.value) m.value = "deepseek-chat";
+    }
+  } catch (e) {
+    console.warn("[求职简历助手] 读取模型配置失败：", e);
+  }
+}
+
+/** 收集表单里的模型配置 */
+function readLLMConfig() {
+  const val = (id) => (document.getElementById(id)?.value || "").trim();
+  return {
+    baseURL: val("llm-baseurl") || "https://api.deepseek.com/v1",
+    model: val("llm-model") || "deepseek-chat",
+    apiKey: val("llm-key"),
+  };
+}
+
+async function saveLLMConfig() {
+  const cfg = readLLMConfig();
+  const sessionOnly = !!document.getElementById("llm-key-session")?.checked;
+  try {
+    if (sessionOnly) {
+      // session 区：浏览器关掉就没了，适合在公共电脑上用
+      await chrome.storage.session.set({ [LLM_SESSION_KEY]: Object.assign(cfg, { sessionOnly: true }) });
+      await chrome.storage.local.remove(LLM_STORE_KEY);
+    } else {
+      await chrome.storage.local.set({ [LLM_STORE_KEY]: Object.assign(cfg, { sessionOnly: false }) });
+      await chrome.storage.session.remove(LLM_SESSION_KEY);
+    }
+  } catch (e) {
+    console.warn("[求职简历助手] 保存模型配置失败：", e);
+  }
+}
+
+function setImportStatus(text, level) {
+  const el = document.getElementById("import-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `import-status ${level || ""}`.trim();
+}
+
+function setTestTip(text, level) {
+  const el = document.getElementById("llm-test-tip");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `llm-config-tip ${level || ""}`.trim();
+}
+
+/** 测试连接：发一个 16 token 的最小请求，只验证 Key / 地址 / 模型名是否可用 */
+async function testLLMConnection() {
+  const btn = document.getElementById("btn-llm-test");
+  const cfg = readLLMConfig();
+  if (!cfg.apiKey) {
+    setTestTip("先填 API Key。", "error");
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setTestTip("正在连接…");
+
+  try {
+    const r = await JH_LLM.ping(cfg, { fetch: JH_LLM.createProxyFetch() });
+    if (r.ok) {
+      setTestTip(`连接正常（${r.model}，${r.ms} ms）`, "ok");
+    } else {
+      setTestTip(`${r.message}${r.hint ? `\n${r.hint}` : ""}`, "error");
+    }
+  } catch (e) {
+    setTestTip(`连接失败：${e.message}`, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/** 选好文件之后的完整流程：校验 → 抽文本 → 调模型 → 渲染预览 */
+async function handleFile(file) {
+  if (importState.busy) return;
+
+  if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+    setImportStatus("目前只支持 PDF。手机拍的简历照片请先导出成 PDF 再试。", "error");
+    return;
+  }
+  if (file.size > MAX_PDF_BYTES) {
+    setImportStatus(
+      `文件 ${JH_PDF.humanSize(file.size)} 超过 8 MB 上限，请导出压缩版 PDF。`,
+      "error"
+    );
+    return;
+  }
+
+  const cfg = readLLMConfig();
+  if (!cfg.apiKey) {
+    setImportStatus("还没有填 API Key。文件已选中，填好 Key 后再选一次即可。", "error");
+    document.getElementById("llm-key")?.focus();
+    return;
+  }
+
+  importState.busy = true;
+  clearImportResult();
+  const t0 = Date.now();
+
+  try {
+    setImportStatus(`正在读取 ${file.name}（${JH_PDF.humanSize(file.size)}）…`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    setImportStatus("正在本地解析 PDF 文字…（文件不会上传）");
+    const pdfjs = await ensurePdfjs();
+    const pdf = await JH_PDF.extractText(bytes, { pdfjs });
+
+    if (pdf.scanned) {
+      setImportStatus(
+        `这份 PDF 里没有可读的文字（${pdf.pages} 页，0 字），是扫描件或纯图片。\n` +
+          "解决办法：用 Word 等工具重新导出带文字层的 PDF，或先手动填一份。",
+        "error"
+      );
+      return;
+    }
+
+    setImportStatus(
+      `已抽出 ${pdf.chars} 字（${pdf.parsedPages}/${pdf.pages} 页），正在交给 ${cfg.model} 解析…`
+    );
+
+    const result = await JH_EXTRACT.extract(pdf.text, {
+      llm: JH_LLM,
+      cfg: Object.assign({}, cfg, { timeoutMs: 60000, maxAttempts: 3 }),
+      deps: { fetch: JH_LLM.createProxyFetch() },
+      onProgress: (stage, detail) => {
+        if (stage === "extract") {
+          setImportStatus(`正在解析…${detail.total > 1 ? `（共 ${detail.total} 段）` : ""}`);
+        } else if (stage === "extract-done") {
+          setImportStatus(`第 ${detail.index}/${detail.total} 段解析完成，抽到 ${detail.filled} 项…`);
+        } else if (stage === "repair") {
+          setImportStatus(
+            `第 ${detail.round} 轮修补：${detail.fields.map(fieldLabel).join("、")} 格式不合格，正在让模型重抽…`
+          );
+        }
+      },
+    });
+
+    importState.result = result;
+    importState.fileName = file.name;
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+    setImportStatus(
+      `解析完成：${result.filled}/44 项有值，用时 ${sec}s，共 ${result.meter.calls} 次调用` +
+        `（${result.meter.promptTokens + result.meter.completionTokens} tokens）。请核对下面的结果。`,
+      "ok"
+    );
+    renderImportResult(result);
+  } catch (e) {
+    // 网络/鉴权的错误信息，llm-client 里已经写成中文了，可以直接展示
+    const hint = e && e.hint ? `\n${e.hint}` : "";
+    setImportStatus(`导入失败：${e.message}${hint}`, "error");
+    console.error("[求职简历助手] 简历导入失败：", e);
+  } finally {
+    importState.busy = false;
+  }
+}
+
+/** pdfjs 是异步加载的 ESM，这里等它就绪；超时给出可操作的提示 */
+async function ensurePdfjs() {
+  if (typeof pdfjsLib !== "undefined") return pdfjsLib;
+  if (typeof window.__pdfjsReady !== "undefined") {
+    const lib = await Promise.race([
+      window.__pdfjsReady,
+      new Promise((r) => setTimeout(() => r(null), 8000)),
+    ]);
+    if (lib) return lib;
+  }
+  if (window.__pdfjsError) {
+    throw new Error(`PDF 解析库加载失败：${window.__pdfjsError.message}`);
+  }
+  throw new Error("PDF 解析库未就绪（超过 8 秒），请重新打开面板再试。");
+}
+
+/** 把抽取结果渲染成「字段名：值」的对照表，只显示有值的项 */
+function renderImportResult(result) {
+  const box = document.getElementById("import-result");
+  const actions = document.getElementById("import-actions");
+  if (!box) return;
+
+  const filled = RESUME_FIELDS.filter((f) => result.data[f]);
+  const rows = filled
+    .map(
+      (f) =>
+        `<div class="result-item"><span class="result-key">${escapeHtml(fieldLabel(f))}</span>` +
+        `<span class="result-val" title="${escapeHtml(result.data[f])}">${escapeHtml(
+          result.data[f].replace(/\n/g, " ⏎ ")
+        )}</span></div>`
+    )
+    .join("");
+
+  const warnings = [];
+  if (result.unrepaired && result.unrepaired.length) {
+    warnings.push(
+      `以下字段格式仍不合格，已保留但建议人工核对：${result.unrepaired.map(fieldLabel).join("、")}`
+    );
+  }
+  const coerced = (result.issues || []).filter((i) => i.kind === "enum_coerced");
+  if (coerced.length) {
+    warnings.push(
+      `已把 ${coerced.length} 处不规范的写法收敛成标准值（如"${
+        coerced[0].detail || ""
+      }"），避免网申下拉框选不中。`
+    );
+  }
+  const modes = (result.meter.modes || []).filter((m) => m.degraded);
+  if (modes.length) {
+    warnings.push("当前模型服务不支持强 JSON 约束，已自动降级为 prompt 约束，建议核对字段完整度。");
+  }
+  if (result.missing && result.missing.length) {
+    warnings.push(`简历里没有的 ${result.missing.length} 项留空了，导入后在面板里补全即可。`);
+  }
+
+  box.innerHTML =
+    `<div class="result-head"><strong>抽到 ${result.filled} 项</strong>` +
+    `<span>${escapeHtml(importState.fileName)}</span></div>` +
+    `<div class="result-list">${rows}</div>` +
+    warnings.map((w) => `<div class="result-warn">${escapeHtml(w)}</div>`).join("");
+
+  if (actions) actions.hidden = false;
+  const applyBtn = document.getElementById("btn-import-apply");
+  if (applyBtn) applyBtn.disabled = false;
+}
+
+function clearImportResult() {
+  const box = document.getElementById("import-result");
+  if (box) box.innerHTML = "";
+  const actions = document.getElementById("import-actions");
+  if (actions) actions.hidden = true;
+  importState.result = null;
+}
+
+/** 把抽取结果落成一份新的简历版本（不覆盖现有版本） */
+async function applyImport() {
+  const result = importState.result;
+  if (!result || !result.data) {
+    setImportStatus("还没有可导入的结果。", "error");
+    return;
+  }
+
+  const btn = document.getElementById("btn-import-apply");
+  if (btn) btn.disabled = true;
+
+  try {
+    // 只取 RESUME_FIELDS 里的字段，且保证 44 个 key 都在（与 readForm 结构一致）
+    const data = {};
+    RESUME_FIELDS.forEach((f) => {
+      const v = result.data[f];
+      data[f] = v ? String(v).trim() : "";
+    });
+
+    const count = countFilled(data);
+    if (!count) throw new Error("这份结果里没有可识别的字段");
+
+    const id = genResumeId();
+    const baseName = importState.fileName.replace(/\.pdf$/i, "").slice(0, 20) || "导入版";
+    const name = `${baseName}（PDF 导入）`;
+
+    const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
+    resumes[id] = { id, name, data, updatedAt: Date.now() };
+    await chrome.storage.local.set({ resumes, activeResumeId: id });
+
+    renderResumeList();
+    await loadResume();
+    clearImportResult();
+    setImportStatus(
+      `已导入为新版本「${name}」（${count} 项）。检查表单后点「保存简历」即可固化。`,
+      "ok"
+    );
+    setTip(`已从 PDF 导入「${name}」（${count} 项字段）。`, "ok");
+  } catch (e) {
+    setImportStatus("导入失败：" + e.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }

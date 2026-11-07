@@ -179,11 +179,26 @@ function createPopupEnv() {
         async set(obj) { Object.assign(popupStore, JSON.parse(JSON.stringify(obj))); },
       },
       onChanged: { addListener() {} },
+      // v0.11.0 起 popup 还会读 storage.session（「API Key 只记本次会话」开关）。
+      // 沙箱里缺这一项会让初始化静默抛错，所以按 Chrome 的行为补一个最小实现。
+      session: {
+        async get(keys) {
+          const arr = Array.isArray(keys) ? keys : [keys];
+          const out = {};
+          arr.forEach((k) => { if (k in popupSession) out[k] = JSON.parse(JSON.stringify(popupSession[k])); });
+          return out;
+        },
+        async set(obj) { Object.assign(popupSession, JSON.parse(JSON.stringify(obj))); },
+        async remove(keys) {
+          (Array.isArray(keys) ? keys : [keys]).forEach((k) => delete popupSession[k]);
+        },
+      },
     },
   };
 
   const popupStore = {};
-  return { document, window, chrome, elements, popupStore };
+  const popupSession = {};
+  return { document, window, chrome, elements, popupStore, popupSession };
 }
 
 /* ========== 构建 popup 运行时（三脚本 + 环境） ========== */

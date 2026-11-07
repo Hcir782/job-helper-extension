@@ -22,6 +22,57 @@
       <button id="btn-del-resume" class="mini-btn danger" type="button" title="删除当前版本">✕</button>
     </div>
 
+    <!-- ========== 从简历文件导入（v0.11.0：PDF → 结构化 JSON） ========== -->
+    <details class="group import-group" id="import-group">
+      <summary class="divider">从简历文件导入（PDF）</summary>
+
+      <p class="import-hint">
+        选一份简历 PDF，本地抽出文字后交给大模型映射成 44 项字段。
+        <strong>PDF 本身不上传</strong>，只有抽出的文字会发给下面配置的模型服务。
+      </p>
+
+      <!-- 第一步：模型配置 -->
+      <div class="llm-config">
+        <label class="field field-wide">
+          <span class="field-label">模型服务地址</span>
+          <input type="text" id="llm-baseurl" placeholder="https://api.deepseek.com/v1" />
+        </label>
+        <label class="field field-wide">
+          <span class="field-label">模型名</span>
+          <input type="text" id="llm-model" placeholder="deepseek-chat" />
+        </label>
+        <label class="field field-wide">
+          <span class="field-label">API Key</span>
+          <input type="password" id="llm-key" placeholder="sk-..." autocomplete="off" />
+        </label>
+        <div class="llm-config-foot">
+          <label class="check-inline">
+            <input type="checkbox" id="llm-key-session" />
+            <span>只记住本次会话（关掉浏览器就清空）</span>
+          </label>
+          <button id="btn-llm-test" class="link-btn" type="button">测试连接</button>
+        </div>
+        <p class="llm-config-tip" id="llm-test-tip"></p>
+      </div>
+
+      <!-- 第二步：选文件 -->
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden />
+        <p class="drop-title">把简历 PDF 拖到这里</p>
+        <p class="drop-sub">或 <button id="btn-pick-file" class="link-btn" type="button">点击选择文件</button>（单份 ≤ 8 MB）</p>
+      </div>
+
+      <p class="import-status" id="import-status"></p>
+
+      <!-- 第三步：抽取结果 -->
+      <div class="import-result" id="import-result"></div>
+
+      <div class="import-actions" id="import-actions" hidden>
+        <button id="btn-import-apply" class="btn btn-primary" type="button">导入为新简历版本</button>
+        <button id="btn-import-cancel" class="btn btn-ghost" type="button">放弃</button>
+      </div>
+    </details>
+
     <form id="resume-form" class="form" autocomplete="off">
       <!-- ========== 基本信息（13） ========== -->
       <details class="group" open>
@@ -369,6 +420,12 @@
   <script src="field-dictionary.js"></script>
   <script src="site-adapters.js"></script>
   <script src="lib/ledger.js"></script>
+  <script src="lib/resume-schema.js"></script>
+  <script src="lib/llm-client.js"></script>
+  <script src="lib/resume-extract.js"></script>
+  <script src="lib/pdf-text.js"></script>
+  <!-- pdfjs 是 ESM，只能作为 type="module" 加载；它加载完成后会把自己挂到 window.pdfjsLib -->
+  <script type="module" src="lib/pdfjs-boot.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

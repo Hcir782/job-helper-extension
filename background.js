@@ -56,6 +56,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "LLM_PROXY") {
+    proxyLLM(msg.payload).then(sendResponse);
+    return true;
+  }
+
   return false;
 });
 
@@ -301,6 +306,63 @@ function sendToTab(tabId, message, frameId) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/* ==================== 大模型请求转发（v0.11.0 简历导入） ==================== */
+
+/**
+ * 由后台代发大模型请求，而不是在弹窗里直接 fetch。
+ *
+ * 原因有两个，都是踩过的坑：
+ *  1. 弹窗（action popup）一旦失去焦点就整个销毁，正在跑的请求会被中断，
+ *     用户点一下网页就前功尽弃；Service Worker 至少能撑到请求结束。
+ *  2. 弹窗里直连第三方 API 会遇到 CORS——很多模型服务的鉴权头
+ *     （Authorization）在预检阶段不被允许，报一个和真实原因无关的 CORS 错误。
+ *     manifest 的 host_permissions 已放开全部站点，后台 fetch 不受这个限制。
+ *
+ * 注意：注释里别写 `https://*` 这种带斜杠的写法——`*` 紧跟在 `/` 后面会提前
+ * 结束块注释，导致整个 Service Worker 解析失败、扩展直接加载不起来
+ * （integration-smoke.test.js 的「链路A」就是在守这一条）。
+ *
+ * 安全边界：Key 只存在 chrome.storage.local，只拼进这一次请求头，
+ * 后台不打印、不写入任何日志。可选「仅本次会话」存在 session 区。
+ */
+async function proxyLLM(payload) {
+  const p = payload || {};
+  if (!p.url) return { ok: false, message: "缺少请求地址。" };
+
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutMs = p.timeoutMs || 60000;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  try {
+    const resp = await fetch(p.url, {
+      method: p.method || "POST",
+      headers: p.headers || {},
+      body: typeof p.body === "string" ? p.body : JSON.stringify(p.body || {}),
+      signal: controller ? controller.signal : undefined,
+    });
+    const text = await resp.text();
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      retryAfter: resp.headers.get("retry-after") || "",
+      text,
+    };
+  } catch (e) {
+    const aborted = e && e.name === "AbortError";
+    return {
+      ok: false,
+      status: 0,
+      network: true,
+      message: aborted
+        ? `请求超过 ${Math.round(timeoutMs / 1000)} 秒没有响应。`
+        : `网络请求失败：${e.message}`,
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 
 /* ==================== 投递记录（阶段 3） ==================== */
 

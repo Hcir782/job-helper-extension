@@ -2,7 +2,7 @@
 
 一款纯本地的求职效率 Chrome 插件：中文简历一键填充、多简历版本管理、投递记录台账与 CSV 导出。所有数据保存在浏览器本地（`chrome.storage.local`），不依赖任何云端服务。
 
-> 技术栈：Chrome Extension Manifest V3 · 原生 HTML/CSS/JS · chrome.storage.local
+> 技术栈：Chrome Extension Manifest V3 · 原生 HTML/CSS/JS · chrome.storage.local · pdf.js · OpenAI 兼容大模型接口
 
 **下载即用**：[最新版本 v0.10.2](https://github.com/Hcir782/job-helper-extension/releases/latest) · 解压后加载即可，不需要 Node / npm / 构建步骤 · [全部版本](https://github.com/Hcir782/job-helper-extension/releases)
 
@@ -35,6 +35,31 @@
 | 下拉较多时不再跳过靠后的控件（单控件 1.8s / 总预算 12s） | ✅ 已完成（v0.10.0） |
 | 飞书招聘（`*.jobs.feishu.cn`，atsx 组件库）表单适配 | ✅ 已完成（v0.10.1） |
 | 多框架页面（主文档表单 + 客服/埋点 iframe）自动挑对那一帧 | ✅ 已完成（v0.10.2） |
+| **简历 PDF 导入**：上传 PDF → 本地抽文字 → 大模型映射成 44 字段 | ✅ 已完成（v0.11.0） |
+
+## 简历 PDF 导入（v0.11.0）
+
+手敲 44 个字段太累，现在可以直接喂一份简历 PDF：
+
+1. 面板顶部展开「从简历文件导入（PDF）」
+2. 填模型服务地址 / 模型名 / API Key，点「测试连接」确认能通
+3. 把 PDF 拖进虚线框（单份 ≤ 8 MB）
+4. 核对抽出的字段（只显示有值的项，缺失项的条数会列出来）
+5. 点「导入为新简历版本」——**总是新建版本，不会覆盖你现有的简历**
+
+**隐私边界**：PDF 文件留在本地，用内置 pdf.js 抽文字；只有抽出的文本会发给你自己配置的模型服务。勾上「只记住本次会话」后 API Key 存 `chrome.storage.session`，关掉浏览器即清空。
+
+**支持的模型服务**：任何 OpenAI 兼容接口。
+
+| 服务 | 地址 | 模型名 |
+| --- | --- | --- |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| 通义千问 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| 智谱 | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| Moonshot | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| 本地 Ollama | `http://localhost:11434/v1` | `qwen2.5:7b` |
+
+> 扫描件 PDF（拍照片转的）没有文字层，抽不出字，会明确提示「请导出带文字层的 PDF」。
 
 ## 支持的招聘网站
 
@@ -329,6 +354,14 @@ job-helper-extension/
 ├─ lib/option-match.js   # 下拉选项匹配纯函数（归一化 / 打分 / 选优 / 拆级联 / 选表格行），content + Node 单测共用
 ├─ lib/date-value.js     # 日期字段归一化纯函数（2027年6月 → 2027-06 → 控件要的格式）
 ├─ lib/date-group.js     # 年月分离控件配对纯函数（判断谁是「年」谁是「月」并配成一对）
+├─ lib/llm-client.js     # 大模型调用层：OpenAI 兼容协议、结构化输出三级降级、重试与错误翻译
+├─ lib/resume-schema.js  # 44 字段契约：JSON Schema、枚举收敛、手机/邮箱/日期归一化、定向修补 prompt
+├─ lib/resume-extract.js # 抽取编排：拼 prompt → 调模型 → 校验 → 只对坏字段定向修补 → 分块合并
+├─ lib/pdf-text.js       # PDF 文字层抽取纯函数（按坐标还原行序、扫描件识别、分块）
+├─ lib/pdfjs-boot.js     # 以 ESM 方式加载内置 pdf.js 并挂到 window.pdfjsLib
+├─ vendor/
+│  ├─ pdf.min.mjs        # pdf.js 主库（MV3 禁止远程加载脚本，必须内置）
+│  └─ pdf.worker.min.mjs # pdf.js worker
 ├─ presets/
 │  └─ resume-wangruiyao.json  # 内置预设简历（44 字段 + 来源信息）
 ├─ demo.html             # 模拟招聘申请表演示页（原生控件）
@@ -348,6 +381,11 @@ job-helper-extension/
 │  ├─ date-value.test.js        # 日期归一化 16 条断言（纯函数，无需浏览器）
 │  ├─ date-group.test.js        # 年月分离控件配对 16 条断言（纯函数，无需浏览器）
 │  ├─ integration-smoke.test.js # 集成冒烟：SW 消息链 + 面板加载 + 预设导入 + 字段一致性 7 条断言
+│  ├─ llm-client.test.js        # 大模型调用层 26 条断言（降级 / 重试 / 错误分类，假 fetch 注入）
+│  ├─ resume-schema.test.js     # 44 字段契约与归一化 32 条断言（纯函数，无需浏览器）
+│  ├─ resume-extract.test.js    # 抽取编排 23 条断言（定向修补 / 分块合并 / 用量记账，假模型）
+│  ├─ pdf-text.test.js          # PDF 取文本与分块 19 条断言（纯函数，无需浏览器）
+│  ├─ e2e-import.js             # 端到端：真实扩展 + 真实 PDF → 抽取 → 导入 → 一键填充闭环
 │  ├─ e2e-widgets.js            # 端到端：真实浏览器里填 6 个自定义控件 + 日期类控件
 │  ├─ e2e-feishu.js             # 端到端：真实浏览器里填飞书 atsx 结构表单（字段名只在容器 label 里）
 │  └─ e2e-frames.js             # 端到端：加载真实扩展，验证多框架页面里填的是主文档而不是客服 iframe
