@@ -415,6 +415,100 @@ function checkTrue(name, cond, detail) {
     check("姓名一路填到底没有变形", filled.name, "王瑞瑶");
     check("手机号一路填到底没有变形", filled.phone, "15248522685");
 
+    // ---------- 8. 图片链路（v0.12.0）：canvas 现画一张简历图 → 多模态导入 ----------
+    // 不引第三方图像库：在页面里用 canvas 画一张带文字的 PNG，
+    // 用 DataTransfer 构造 File 塞进文件选择框并派发 change——
+    // 与真实「选一张照片」走的是同一个事件入口。
+    // （不用 puppeteer 的 uploadFile：对同一个 input 第二次喂文件时 change 不会触发）
+    const pngDataUrl = await panel.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = 620;
+      c.height = 880;
+      const g = c.getContext("2d");
+      g.fillStyle = "#ffffff";
+      g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = "#111111";
+      g.font = "28px Arial";
+      [
+        "WANG RUIYAO",
+        "Female | Phone: 152-4852-2685",
+        "Email: WangRuiYao87@Gmail.com",
+        "Dalian Institute of Science and Technology",
+      ].forEach((t, i) => g.fillText(t, 40, 80 + i * 60));
+      return c.toDataURL("image/png");
+    });
+
+    const visionBefore = requests.length;
+    // 第 7 节开的 demo 标签页把 panel 挤成了后台页：
+    // waitForFunction 默认按 requestAnimationFrame 轮询，而后台页的 RAF 被冻结，
+    // 会永远等不到结果——先把 panel 调回前台，并改用固定间隔轮询兜底。
+    await panel.bringToFront();
+    await panel.evaluate((dataUrl) => {
+      const bin = atob(dataUrl.split(",")[1]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], "resume.png", { type: "image/png" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const input = document.getElementById("file-input");
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, pngDataUrl);
+    await panel.waitForFunction(
+      () => /解析完成|导入失败/.test(document.getElementById("import-status").textContent),
+      { timeout: 30000, polling: 250 }
+    );
+
+    const visionUi = await panel.evaluate(() => ({
+      status: document.getElementById("import-status").textContent,
+      resultText: document.getElementById("import-result").textContent,
+    }));
+    checkTrue("图片链路状态栏报告解析完成", /解析完成/.test(visionUi.status), visionUi.status);
+    checkTrue("图片链路结果里出现姓名", visionUi.resultText.includes("王瑞瑶"));
+    checkTrue(
+      "图片链路的隐私提示说清楚了「图片会上传」",
+      /图片会上传/.test(visionUi.status) || /解析完成/.test(visionUi.status),
+      visionUi.status
+    );
+
+    // 图片请求必须是多模态结构：user.content 是数组，含 image_url 段
+    const visionReq = requests
+      .slice(visionBefore)
+      .find((r) => r.body.messages && Array.isArray(r.body.messages[1] && r.body.messages[1].content));
+    checkTrue("图片请求带上了 image_url 多模态消息", !!visionReq);
+    if (visionReq) {
+      const part = visionReq.body.messages[1].content.find((p) => p.type === "image_url");
+      checkTrue(
+        "image_url 是图片 dataURL（压缩成 JPEG 后发给模型服务）",
+        !!(part && /^data:image\/jpeg;base64,/.test(part.image_url.url))
+      );
+    }
+
+    // ---------- 9. 图片结果也走「导入为新版本」 ----------
+    await panel.evaluate(() => document.getElementById("btn-import-apply").click());
+    await new Promise((r) => setTimeout(r, 1200));
+    const imgApplyStatus = await panel.evaluate(
+      () => document.getElementById("import-status").textContent
+    );
+    checkTrue(
+      "图片导入点击后提示已导入",
+      /已导入为新版本/.test(imgApplyStatus),
+      `实际状态：${imgApplyStatus}`
+    );
+
+    const imgStored = await panel.evaluate(async () => {
+      const { resumes } = await chrome.storage.local.get(["resumes"]);
+      const list = Object.values(resumes || {});
+      const hit = list.find((r) => r.name && r.name.indexOf("（图片导入）") !== -1);
+      return hit ? { name: hit.name, keys: Object.keys(hit.data).length } : null;
+    });
+    checkTrue(
+      "图片导入也新建版本且命名含「图片导入」",
+      !!(imgStored && imgStored.name.indexOf("（图片导入）") !== -1),
+      JSON.stringify(imgStored)
+    );
+    check("图片版本 44 字段完整", imgStored && imgStored.keys, 44);
+
     checkTrue("全程没有未捕获的脚本异常", errors.length === 0, errors.join(" | "));
   } finally {
     await browser.close();

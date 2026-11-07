@@ -872,6 +872,7 @@ const importState = {
   busy: false,
   result: null, // extract() 的返回值
   fileName: "",
+  kind: "", // "pdf" | "image"：决定落库时的版本名后缀
 };
 
 const LLM_STORE_KEY = "llmConfig";
@@ -1019,15 +1020,24 @@ async function testLLMConnection() {
   }
 }
 
-/** 选好文件之后的完整流程：校验 → 抽文本 → 调模型 → 渲染预览 */
+/** 选好文件之后的完整流程：校验 → （PDF 抽文本 / 图片压缩）→ 调模型 → 渲染预览 */
 async function handleFile(file) {
   if (importState.busy) return;
 
-  if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
-    setImportStatus("目前只支持 PDF。手机拍的简历照片请先导出成 PDF 再试。", "error");
+  const isImage = JH_VISION.isImageFile(file.name, file.type);
+  const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
+  if (!isImage && !isPdf) {
+    setImportStatus("支持带文字层的 PDF 或图片（JPG / PNG / WebP），其他格式请先转换。", "error");
     return;
   }
-  if (file.size > MAX_PDF_BYTES) {
+  if (isImage && file.size > JH_VISION.MAX_IMAGE_BYTES) {
+    setImportStatus(
+      `图片 ${JH_PDF.humanSize(file.size)} 超过 10 MB 上限，请先缩小后再试。`,
+      "error"
+    );
+    return;
+  }
+  if (!isImage && file.size > MAX_PDF_BYTES) {
     setImportStatus(
       `文件 ${JH_PDF.humanSize(file.size)} 超过 8 MB 上限，请导出压缩版 PDF。`,
       "error"
@@ -1047,42 +1057,60 @@ async function handleFile(file) {
   const t0 = Date.now();
 
   try {
-    setImportStatus(`正在读取 ${file.name}（${JH_PDF.humanSize(file.size)}）…`);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-
-    setImportStatus("正在本地解析 PDF 文字…（文件不会上传）");
-    const pdfjs = await ensurePdfjs();
-    const pdf = await JH_PDF.extractText(bytes, { pdfjs });
-
-    if (pdf.scanned) {
-      setImportStatus(
-        `这份 PDF 里没有可读的文字（${pdf.pages} 页，0 字），是扫描件或纯图片。\n` +
-          "解决办法：用 Word 等工具重新导出带文字层的 PDF，或先手动填一份。",
-        "error"
-      );
-      return;
-    }
-
-    setImportStatus(
-      `已抽出 ${pdf.chars} 字（${pdf.parsedPages}/${pdf.pages} 页），正在交给 ${cfg.model} 解析…`
-    );
-
-    const result = await JH_EXTRACT.extract(pdf.text, {
+    const onProgress = (stage, detail) => {
+      if (stage === "extract") {
+        setImportStatus(`正在解析…${detail.total > 1 ? `（共 ${detail.total} 段）` : ""}`);
+      } else if (stage === "extract-done") {
+        setImportStatus(`第 ${detail.index}/${detail.total} 段解析完成，抽到 ${detail.filled} 项…`);
+      } else if (stage === "repair") {
+        setImportStatus(
+          `第 ${detail.round} 轮修补：${detail.fields.map(fieldLabel).join("、")} 格式不合格，正在让模型重抽…`
+        );
+      }
+    };
+    const extractOpts = {
       llm: JH_LLM,
       cfg: Object.assign({}, cfg, { timeoutMs: 60000, maxAttempts: 3 }),
       deps: { fetch: JH_LLM.createProxyFetch() },
-      onProgress: (stage, detail) => {
-        if (stage === "extract") {
-          setImportStatus(`正在解析…${detail.total > 1 ? `（共 ${detail.total} 段）` : ""}`);
-        } else if (stage === "extract-done") {
-          setImportStatus(`第 ${detail.index}/${detail.total} 段解析完成，抽到 ${detail.filled} 项…`);
-        } else if (stage === "repair") {
-          setImportStatus(
-            `第 ${detail.round} 轮修补：${detail.fields.map(fieldLabel).join("、")} 格式不合格，正在让模型重抽…`
-          );
-        }
-      },
-    });
+      onProgress,
+    };
+
+    let result;
+    if (isImage) {
+      // 图片链路（v0.12.0）：没有文字层可抽，走多模态模型。
+      // 隐私边界与 PDF 不同：压缩后的图片本身会发给模型服务，必须说清楚。
+      importState.kind = "image";
+      setImportStatus(`正在读取图片 ${file.name}（${JH_PDF.humanSize(file.size)}）…`);
+      const dataUrl = await compressImageFile(file);
+      setImportStatus(
+        `已压缩到 ${JH_PDF.humanSize(JH_VISION.estimateDataUrlBytes(dataUrl))}，` +
+          `正在交给 ${cfg.model} 识别…（图片会上传给该模型服务）`
+      );
+      result = await JH_EXTRACT.extractFromImages([dataUrl], extractOpts);
+    } else {
+      // PDF 链路（v0.11.0）：文件留在本地，只有抽出的文字会发出去
+      importState.kind = "pdf";
+      setImportStatus(`正在读取 ${file.name}（${JH_PDF.humanSize(file.size)}）…`);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      setImportStatus("正在本地解析 PDF 文字…（文件不会上传）");
+      const pdfjs = await ensurePdfjs();
+      const pdf = await JH_PDF.extractText(bytes, { pdfjs });
+
+      if (pdf.scanned) {
+        setImportStatus(
+          `这份 PDF 里没有可读的文字（${pdf.pages} 页，0 字），是扫描件或纯图片。\n` +
+            "解决办法：用 Word 等工具重新导出带文字层的 PDF，或直接改传简历图片（JPG / PNG）。",
+          "error"
+        );
+        return;
+      }
+
+      setImportStatus(
+        `已抽出 ${pdf.chars} 字（${pdf.parsedPages}/${pdf.pages} 页），正在交给 ${cfg.model} 解析…`
+      );
+      result = await JH_EXTRACT.extract(pdf.text, extractOpts);
+    }
 
     importState.result = result;
     importState.fileName = file.name;
@@ -1095,11 +1123,42 @@ async function handleFile(file) {
     renderImportResult(result);
   } catch (e) {
     // 网络/鉴权的错误信息，llm-client 里已经写成中文了，可以直接展示
-    const hint = e && e.hint ? `\n${e.hint}` : "";
+    let hint = e && e.hint ? `\n${e.hint}` : "";
+    if (JH_VISION.isVisionUnsupported(e && e.message)) {
+      hint += "\n当前模型可能不支持图片输入，请在设置里换一个多模态模型" +
+        "（如 qwen-vl-plus、glm-4v、gpt-4o-mini 等），或改传带文字层的 PDF。";
+    }
     setImportStatus(`导入失败：${e.message}${hint}`, "error");
     console.error("[求职简历助手] 简历导入失败：", e);
   } finally {
     importState.busy = false;
+  }
+}
+
+/**
+ * 把图片文件压成 JPEG dataURL：等比缩到最长边 ≤ 2000px、质量 0.85。
+ * 拍照直出的图动辄 4000×3000 / 8 MB，base64 之后更大——先压再发，
+ * 识别率不损失，token 费用和传输体积都省下来。
+ * 这一步要 canvas，只能放在 popup / 标签页里做，放不进 Service Worker。
+ */
+async function compressImageFile(file) {
+  if (typeof createImageBitmap !== "function") {
+    throw new Error("当前浏览器不支持图片解码，请改用 PDF 导入或手动填写。");
+  }
+  const bitmap = await createImageBitmap(file);
+  try {
+    const { width, height } = JH_VISION.computeScaledSize(
+      bitmap.width,
+      bitmap.height,
+      JH_VISION.MAX_EDGE
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", JH_VISION.JPEG_QUALITY);
+  } finally {
+    if (bitmap.close) bitmap.close();
   }
 }
 
@@ -1200,8 +1259,10 @@ async function applyImport() {
     if (!count) throw new Error("这份结果里没有可识别的字段");
 
     const id = genResumeId();
-    const baseName = importState.fileName.replace(/\.pdf$/i, "").slice(0, 20) || "导入版";
-    const name = `${baseName}（PDF 导入）`;
+    const baseName =
+      importState.fileName.replace(/\.(pdf|jpe?g|png|webp)$/i, "").slice(0, 20) || "导入版";
+    const suffix = importState.kind === "image" ? "（图片导入）" : "（PDF 导入）";
+    const name = `${baseName}${suffix}`;
 
     const { resumes = {} } = await chrome.storage.local.get(["resumes"]);
     resumes[id] = { id, name, data, updatedAt: Date.now() };

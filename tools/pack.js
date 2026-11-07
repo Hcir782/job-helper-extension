@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, "..");
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
 const outFile = process.argv[2] || path.join("D:", "jh-dist", `job-helper-extension-v${MANIFEST.version}.zip`);
 
-const skip = /^(\.git\/|node_modules\/|docs\/|tests\/|tools\/)/;
+const skip = /^(\.git\/|node_modules\/|docs\/|tests\/|tools\/|notes\/|\.tmp-|\.workbuddy\/|\.codebuddy\/)/;
 const files = [];
 (function walk(dir, base) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

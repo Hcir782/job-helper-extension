@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "求职简历助手",
-  "version": "0.11.0",
-  "description": "校招简历自动填充（44 字段，覆盖 Moka/快手/飞书招聘/京东校招等主流招聘系统）、简历 PDF 一键导入、简历版本管理、投递记录与 CSV 导出。简历数据默认保存在浏览器本地。",
+  "version": "0.12.0",
+  "description": "校招简历自动填充（44 字段，覆盖 Moka/快手/飞书招聘/京东校招等主流招聘系统）、简历 PDF / 图片一键导入、简历版本管理、投递记录与 CSV 导出。简历数据默认保存在浏览器本地。",
   "minimum_chrome_version": "116",
   "action": {
     "default_popup": "popup.html",

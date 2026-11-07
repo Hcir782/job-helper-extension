@@ -2,6 +2,35 @@
 
 本项目的所有版本变更都记录在这里。版本号遵循 `主版本.次版本.修订号`，每个功能完成并实测通过后单独提交，提交信息遵循 `feat:` / `fix:` 规范。
 
+## v0.12.0 · 2026-11-07
+
+这一版补上 v0.11.0 留下最大的缺口——「手机拍的简历照片要先转 PDF」。现在图片可以直接喂进来，走多模态模型读图。
+
+### 新增
+
+- **简历图片直接导入**：面板的导入区现在同时收 PDF 和图片（JPG / PNG / WebP，≤ 10 MB）。图片没有文字层可抽，走多模态模型：本地先用 canvas 等比压缩（最长边 ≤ 2000px、JPEG 质量 0.85），再以 dataURL 随 `image_url` 多模态消息发给用户配置的模型服务。拍照直出的简历不用再先转 PDF。
+- **多模态抽取入口 `extractFromImages()`**：与文本链路的 `extract()` 共用同一套 system prompt 约束、确定性校验（枚举收敛 / 日期 / 手机 / 邮箱规范化）和「只对不合格字段定向修补」逻辑——两条链路只有「怎么把简历内容给模型」这一段不同，质量兜底完全共享。修补轮同样会带上原图，让模型能重看。
+- **「模型不支持图片」的明确报错**：各家措辞不一（`image_url is not supported` / `该模型不支持图片输入` / `invalid_image`），识别到「图片关键词 + 拒绝措辞」同时出现时，提示换成「换一个多模态模型（qwen-vl-plus / glm-4v / gpt-4o-mini 等），或改传带文字层的 PDF」，而不是一句看不懂的 HTTP 400。
+- **隐私边界在 UI 里说清楚**：PDF 是「文件不上传，只发文字」；图片是「压缩后的图片本身会上传」。两种文件的提示文案分开写，README 权限一节同步更新。
+
+### 实现
+
+- 新增 `lib/vision-image.js` 纯函数层：文件类型判定（MIME 与扩展名任一命中）、等比压缩尺寸计算、多模态 content 数组构造、dataURL 校验与体积估算、报错识别。压缩本体（canvas）依赖 DOM，留在 popup.js。
+- `lib/resume-extract.js`：修补循环抽成 `repairLoop()`，`extract()` 与 `extractFromImages()` 共用；`buildSystemPrompt(kind)` 支持图片模式的首行措辞（其余约束逐字共享）。
+- `popup.js`：`handleFile` 按文件类型分流两条链路；`compressImageFile()` 用 `createImageBitmap` + canvas 压图；落库版本名区分「（PDF 导入）/（图片导入）」。
+- llm-client 无需改动：`buildBody` 原样透传消息数组，多模态 content 天然兼容三级降级。
+
+### 测试
+
+- 新增 `tests/vision-image.test.js`（22 条）：类型判定 / 缩放计算 / 多模态消息结构 / 报错识别，以及用假 fetch 驱动 `extractFromImages` 的完整流程（消息结构、修补只修坏字段、两轮上限、提前收手、垃圾输出重问）。
+- `tests/e2e-import.js` 扩到 35 条：新增图片链路用例——在页面里用 canvas 现画一张简历 PNG、`DataTransfer` 构造 File 派发 change（puppeteer 的 `uploadFile` 对同一个输入框第二次喂文件不触发 change），断言请求体是多模态结构、图片以 JPEG dataURL 上传、导入的新版本命名含「图片导入」。
+- 全套 **218 条单测 + 79 条端到端 = 297 条断言**全部通过。
+
+### 踩坑记录
+
+- **脚本顺序**：`vision-image.js` 必须在 `resume-extract.js` **之前**加载——后者在浏览器里靠全局 `JH_VISION` 判存活，加载顺序错了会静默退回 `require()` 直接抛 ReferenceError，整个抽取模块挂掉。e2e 的「抽取编排可用」断言抓到了。
+- **后台标签页冻结 RAF**：e2e 先开 demo 页再回到 panel 页等待结果时，`waitForFunction` 默认按 `requestAnimationFrame` 轮询，而后台页的 RAF 被浏览器冻结，永远等不到。`bringToFront()` + 固定间隔轮询（`polling: 250`）解决。
+
 ## v0.11.0 · 2026-11-07
 
 这一版解决的是「44 个字段得一个个手敲」——现在可以丢一份简历 PDF 进来，自动抽成 44 项。

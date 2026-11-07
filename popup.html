@@ -22,13 +22,14 @@
       <button id="btn-del-resume" class="mini-btn danger" type="button" title="删除当前版本">✕</button>
     </div>
 
-    <!-- ========== 从简历文件导入（v0.11.0：PDF → 结构化 JSON） ========== -->
+    <!-- ========== 从简历文件导入（v0.11.0 PDF / v0.12.0 图片） ========== -->
     <details class="group import-group" id="import-group">
-      <summary class="divider">从简历文件导入（PDF）</summary>
+      <summary class="divider">从简历文件导入（PDF / 图片）</summary>
 
       <p class="import-hint">
-        选一份简历 PDF，本地抽出文字后交给大模型映射成 44 项字段。
-        <strong>PDF 本身不上传</strong>，只有抽出的文字会发给下面配置的模型服务。
+        选一份简历 PDF 或图片（JPG / PNG / WebP），交给大模型映射成 44 项字段。
+        <strong>PDF 本身不上传</strong>，只有抽出的文字会发给下面配置的模型服务；
+        图片走多模态模型，<strong>压缩后的图片本身会上传</strong>。
       </p>
 
       <!-- 第一步：模型配置 -->
@@ -57,9 +58,9 @@
 
       <!-- 第二步：选文件 -->
       <div class="drop-zone" id="drop-zone">
-        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden />
-        <p class="drop-title">把简历 PDF 拖到这里</p>
-        <p class="drop-sub">或 <button id="btn-pick-file" class="link-btn" type="button">点击选择文件</button>（单份 ≤ 8 MB）</p>
+        <input type="file" id="file-input" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden />
+        <p class="drop-title">把简历 PDF 或图片拖到这里</p>
+        <p class="drop-sub">或 <button id="btn-pick-file" class="link-btn" type="button">点击选择文件</button>（PDF ≤ 8 MB，图片 ≤ 10 MB）</p>
       </div>
 
       <p class="import-status" id="import-status"></p>
@@ -421,6 +422,7 @@
   <script src="site-adapters.js"></script>
   <script src="lib/ledger.js"></script>
   <script src="lib/resume-schema.js"></script>
+  <script src="lib/vision-image.js"></script>
   <script src="lib/llm-client.js"></script>
   <script src="lib/resume-extract.js"></script>
   <script src="lib/pdf-text.js"></script>

@@ -1,7 +1,7 @@
 # AGENTS.md · 简填 JobFill（求职简历助手）开发交接
 
 > 给接手这个仓库的 AI 编码助手看的说明书。读完这一页，你应该能在不动手确认的情况下直接改代码、跑测试、打包。
-> 版本：v0.11.0 ｜ 最后更新：2026-11-07
+> 版本：v0.12.0 ｜ 最后更新：2026-11-07
 
 ---
 
@@ -10,7 +10,7 @@
 一个 Chrome Extension（Manifest V3），两件事：
 
 1. **填表**：把 44 项中文简历字段一键填进招聘网站的网申表单（Moka、快手、飞书招聘、京东校招等都实测过）。
-2. **入库**（v0.11.0 新增）：反过来，把一份简历 PDF 在浏览器本地抽成文字，交给用户自己配置的大模型映射成 44 字段，确认后新建一个简历版本。
+2. **入库**（v0.11.0 新增）：反过来，把一份简历 PDF 在浏览器本地抽成文字，交给用户自己配置的大模型映射成 44 字段，确认后新建一个简历版本。v0.12.0 起也收图片（JPG/PNG/WebP），走多模态模型直读——**图片本体会上传**（压缩后），与 PDF「只发文字」的隐私边界不同，UI 和文档都必须分开说。
 
 **没有构建步骤。** 不是 npm 项目，没有 `package.json`、没有打包器、没有 TypeScript。所有 `.js` 都是浏览器直接加载的普通脚本（少数按 UMD 写法同时兼容 Node `require`，好让单测能直接跑）。
 
@@ -33,12 +33,13 @@ set NODE_PATH=C:\Users\hcir0\.workbuddy\binaries\node\workspace\node_modules
 
 :: 打发布包 + 校验（两条命令，别手工压 zip）
 %NODE% tools\pack.js
-%NODE% tools\verify-pack.js D:\jh-dist\job-helper-extension-v0.11.0.zip
+%NODE% tools\verify-pack.js D:\jh-dist\job-helper-extension-v0.12.0.zip
 ```
 
 - git 用便携版：`C:\Users\hcir0\.workbuddy\binaries\PortableGit\versions\1.2.0\cmd\git.exe`
 - **`git push` 会因沙箱拦截 `C:\Users\hcir0\.ssh\*` 而失败，不要反复重试**，直接告诉用户手动推。
 - 测试结果想批量统计，就写个临时 Node 脚本 `execFileSync(..., {encoding:"utf8"})` 再数 `✓` / `✗`，不要试图用 PowerShell 管道。
+- 更细的开发历史见 `notes/`（只在本地，不进仓库）。
 
 ---
 
@@ -61,13 +62,14 @@ lib/                   纯函数层，每个都能 Node 单测
   resume-schema.js     44 字段契约：JSON Schema、枚举收敛、手机/邮箱/日期规范化、定向修补 prompt
   resume-extract.js    抽取编排：拼 prompt → 调模型 → 校验 → 只修坏字段 → 分块合并
   pdf-text.js          pdf.js 文字层抽取：按坐标还原行序、扫描件判定、分块
+  vision-image.js      图片简历纯函数：类型判定、压缩尺寸、多模态消息构造、报错识别
   pdfjs-boot.js        ESM 动态加载内置 pdf.js 并挂 window.pdfjsLib
 
 vendor/                必须提交进仓库（MV3 禁止从 CDN 加载脚本）
   pdf.min.mjs          359 KB
   pdf.worker.min.mjs   1.06 MB
 
-tests/                 10 个单测 + 4 个 e2e，合计 267 条断言
+tests/                 11 个单测 + 4 个 e2e，合计 297 条断言
 tools/pack.js          手写 ZIP 打包（排除 .git/node_modules/docs/tests/tools）
 tools/verify-pack.js   逐条验 CRC + 核对 manifest/popup 引用的资源是否都在包里
 demo*.html/.js         演示页，e2e 也靠它们当被测页面
@@ -90,16 +92,18 @@ demo*.html/.js         演示页，e2e 也靠它们当被测页面
 
 ---
 
-## 5. v0.11.0 的四层抽取链路（改这块之前先读）
+## 5. v0.11.0/v0.12.0 的抽取链路（改这块之前先读）
 
 ```
-PDF 文件（留在本地，不上传）
-  → lib/pdf-text.js      pdf.js 抽文字，按坐标还原行序；不转 Markdown（两栏简历会串行）
-  → lib/llm-client.js    POST {baseURL}/v1/chat/completions
+PDF 文件（留在本地，不上传）                      图片文件（压缩后上传）
+  → lib/pdf-text.js      pdf.js 抽文字，按坐标还原行序；      → popup.js canvas 等比压缩（≤2000px/JPEG 0.85）
+                         不转 Markdown（两栏简历会串行）      → lib/vision-image.js  类型判定/消息构造
+  → lib/llm-client.js    POST {baseURL}/v1/chat/completions（两条链路共用）
                           response_format: json_schema → json_object → prompt_only
                           只在 HTTP 400/422（参数不支持）时降档，401/403/网络错误不降档
   → lib/resume-schema.js 确定性校验：枚举收敛、日期/手机/邮箱规范化、白名单、超长截断
   → lib/resume-extract.js 只对「有值但格式不合格」的字段定向修补，最多 2 轮，只接受这些字段的新值
+                          extract()（文本）与 extractFromImages()（图片）共用同一个 repairLoop
 ```
 
 **三个不要动的设计决策**：
@@ -112,9 +116,9 @@ PDF 文件（留在本地，不上传）
 
 ## 6. 测试策略
 
-- **单测**（196 条）：`vm` 沙箱加载真实脚本，mock `chrome.*` 和最小的 DOM。能在提交前抓出「按钮没绑事件」「字段与词典不一致」这类问题。
-- **e2e**（71 条）：真实 Edge + Puppeteer 加载真实扩展。`e2e-import.js` 会自己拼一份带文字层的 PDF（不引第三方库）、起一个本地假模型服务（故意对 `json_schema` 回 400 逼出降级），断言整条链路直到填进 `demo.html`。
-- **puppeteer 的坑**：`page.click()` 点不到视口外的元素（会静默失败），面板比视口长时改用 `page.evaluate(() => el.click())`。
+- **单测**（218 条）：`vm` 沙箱加载真实脚本，mock `chrome.*` 和最小的 DOM。能在提交前抓出「按钮没绑事件」「字段与词典不一致」这类问题。
+- **e2e**（79 条）：真实 Edge + Puppeteer 加载真实扩展。`e2e-import.js` 会自己拼一份带文字层的 PDF（不引第三方库）、在页面里用 canvas 现画一张简历 PNG（图片链路）、起一个本地假模型服务（故意对 `json_schema` 回 400 逼出降级），断言整条链路直到填进 `demo.html`。
+- **puppeteer 的坑**：`page.click()` 点不到视口外的元素（会静默失败），面板比视口长时改用 `page.evaluate(() => el.click())`；`uploadFile` 对同一个输入框第二次喂文件**不触发 change**，要改用页面内 `DataTransfer` 构造 File 派发事件；`waitForFunction` 默认按 RAF 轮询，**后台标签页的 RAF 被冻结**会永远超时，开过别的标签页后要 `bringToFront()` 或 `polling: 250`。
 - 改字段相关代码后，至少跑：`integration-smoke`（字段一致性）、`resume-schema`、以及 `e2e-import`。
 
 ---
@@ -124,7 +128,7 @@ PDF 文件（留在本地，不上传）
 - 提交信息：`feat:` / `fix:` / `docs:` / `chore:` 前缀，中文描述，一次功能一个提交。
 - 版本号只改 `manifest.json` 的 `version`，面板右上角显示的就是它。
 - 发版：改 manifest → 更新 CHANGELOG → 跑全量测试 → `tools\pack.js` → `tools\verify-pack.js` → 提交 → 打 tag → （用户手动）push + 建 Release。
-- 发布包不该包含：`.git/`、`node_modules/`、`tests/`、`docs/`、`tools/`。当前包是 **32 个文件 / 约 526 KB**，其中 pdf.js 占 1.4 MB 未压缩。
+- 发布包不该包含：`.git/`、`node_modules/`、`tests/`、`docs/`、`tools/`、`notes/`、`.tmp-*`。当前包是 **35 个文件 / 约 0.53 MB**，其中 pdf.js 占 1.4 MB 未压缩。
 
 ---
 
